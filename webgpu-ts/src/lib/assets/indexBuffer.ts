@@ -2,7 +2,11 @@ import { BufferBase, type BufferSlot } from "./bufferBase";
 
 export class IndexBuffer extends BufferBase {
   constructor(device: GPUDevice) {
-    super(device, "IndexBuffer", GPUBufferUsage.INDEX);
+    super(
+      device,
+      "IndexBuffer",
+      GPUBufferUsage.INDEX | GPUBufferUsage.COPY_DST,
+    );
   }
 
   write(indices: number[]): BufferSlot {

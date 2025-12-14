@@ -70,23 +70,26 @@ export function objToMesh(obj: MeshObj): Mesh {
     // TODO: handle quads and ngons
     // Obj face format:
     //   v/vt/n == pos/uv/norm
-    const [posId, uvId, normId] = toFixedLength(face.split("/"), 3, "")
+    const faceData = toFixedLength(face.split("/"), 3, "")
       .map((x) => (x === "" ? "1" : x))
       .map(parseInt)
       .map((i) => i - 1); // convert from 1-based to 0-based index
+    const posId = faceData[0]!;
+    const uvId = faceData[1]!;
+    const normId = faceData[2]!;
     // Vertex data format:
     //   (pos.x, pos.y, pos.z, norm.x, norm.y, norm.z, uv.x, uv.y)
     // If it's undefined, default to (0, 0, 0)
-    const position = posId < obj.positions.length ? obj.positions[posId] : [];
+    const position = posId < obj.positions.length ? obj.positions[posId]! : [];
     // If normals are undefined, compute flat faces.
     let normals =
       normId < obj.normals.length
-        ? obj.normals[normId]
+        ? obj.normals[normId]!
         : // TODO: compute flat faces, it currently assigns normals to positions
           //  Good for debug visualizing, but not a good default overall.
           vec3.normalize(position);
     // If UVs are udefined, default to (0, 0)
-    const uvs = uvId < obj.uvs.length ? obj.uvs[uvId] : [];
+    const uvs = uvId < obj.uvs.length ? obj.uvs[uvId]! : [];
     return [
       ...toFixedLength(position, 3, 0),
       ...toFixedLength(normals, 3, 0),

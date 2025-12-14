@@ -1,4 +1,5 @@
 import type { BufferSlot } from "./assets/bufferBase";
+import { EntityBuffer } from "./assets/entityBuffer";
 import { IndexBuffer } from "./assets/indexBuffer";
 import { VertexBuffer } from "./assets/vertexBuffer";
 import { loadObj } from "./loaders/mesh.obj";
@@ -64,6 +65,7 @@ export type LoadedAsset = LoadedMesh;
 export class AssetLibrary {
   loaders: Record<FilePattern, AssetLoader>;
   staged: Record<AssetID, Record<AssetLOD, LoadedAsset>>;
+  entities: EntityBuffer;
   vertexBuffer: VertexBuffer;
   indexBuffer: IndexBuffer;
 
@@ -76,6 +78,7 @@ export class AssetLibrary {
       "*.obj": loadObj,
     };
     this.staged = {};
+    this.entities = new EntityBuffer(device);
     this.vertexBuffer = new VertexBuffer(device);
     this.indexBuffer = new IndexBuffer(device);
 

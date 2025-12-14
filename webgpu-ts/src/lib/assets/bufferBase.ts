@@ -77,7 +77,7 @@ export class BufferBase {
     const chunkBuffer = this.device.createBuffer({
       label: `[${chunk}] ${this.label}`,
       size: this.chunkSize,
-      usage: this.usage | GPUBufferUsage.COPY_DST,
+      usage: this.usage,
     });
     this.chunks.push(chunkBuffer);
     console.log(
@@ -87,31 +87,39 @@ export class BufferBase {
   }
 
   writeFloat32(data: number[]): BufferSlot {
-    return this.#write("float32", data, [], (xs) => new Float32Array(xs));
+    return this.#write("float32", data, (xs) => new Float32Array(xs));
   }
 
   writeUInt8(data: number[]): BufferSlot {
+    // WebGPU requires buffer writes to be a multiple of 4.
     const padding = new Array(4 - (data.length % 4)).fill(0);
-    return this.#write("uint8", data, padding, (xs) => new Uint8Array(xs));
+    return this.#write(
+      "uint8",
+      data.concat(padding),
+      (xs) => new Uint8Array(xs),
+    );
   }
 
   writeUInt16(data: number[]): BufferSlot {
+    // WebGPU requires buffer writes to be a multiple of 4.
     const padding = new Array(data.length % 2).fill(0);
-    return this.#write("uint16", data, padding, (xs) => new Uint16Array(xs));
+    return this.#write(
+      "uint16",
+      data.concat(padding),
+      (xs) => new Uint16Array(xs),
+    );
   }
 
   writeUInt32(data: number[]): BufferSlot {
-    return this.#write("uint32", data, [], (xs) => new Uint32Array(xs));
+    return this.#write("uint32", data, (xs) => new Uint32Array(xs));
   }
 
   #write(
     type: BufferType,
     data: number[],
-    padding: number[],
     toBuffer: (xs: number[]) => BufferSource,
   ): BufferSlot {
-    // WebGPU requires buffer writes to be a multiple of 4.
-    const buffer = toBuffer(data.concat(padding));
+    const buffer = toBuffer(data);
     const slot = this.findFreeSlot(buffer.byteLength);
     this.device.queue.writeBuffer(
       this.chunks[slot.chunk]!,

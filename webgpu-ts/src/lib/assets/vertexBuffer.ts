@@ -7,7 +7,11 @@ export class VertexBuffer extends BufferBase {
   //   (3+3+2)=8 float32 = 32 bytes, aligns well with cache line.
   static readonly stride = (3 + 3 + 2) * Float32Array.BYTES_PER_ELEMENT;
   constructor(device: GPUDevice) {
-    super(device, "VertexBuffer", GPUBufferUsage.VERTEX);
+    super(
+      device,
+      "VertexBuffer",
+      GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST,
+    );
   }
 
   write(vertices: number[][]): BufferSlot {
