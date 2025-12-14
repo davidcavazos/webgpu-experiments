@@ -76,9 +76,9 @@ export type LoadedAsset = Loading | LoadedMesh | AssetError;
 // TODO: make this into a generic Library
 export class AssetLibrary {
   loaders: Record<FilePattern, AssetLoader>;
-  staged: Record<AssetID, Record<AssetLOD, LoadedAsset>>;
+  staged: Record<AssetID, LoadedAsset>;
   requests: Record<RequestID, Promise<Asset>>;
-  entities: EntityBuffer;
+  entities: EntityBuffer; // TODO: remove this?
   vertexBuffer: VertexBuffer;
   indexBuffer: IndexBuffer;
 
@@ -93,6 +93,7 @@ export class AssetLibrary {
     this.staged = {};
     this.requests = {};
     this.entities = new EntityBuffer(device);
+    this.instances = {};
     this.vertexBuffer = new VertexBuffer(device);
     this.indexBuffer = new IndexBuffer(device);
 
@@ -120,24 +121,18 @@ export class AssetLibrary {
   }
 
   request(asset: Asset, lod: AssetLOD = 0): LoadedAsset {
-    const id = getAssetID(asset);
+    const id = getAssetID(asset, lod);
     const staged = this.staged[id];
-    if (staged === undefined) {
-      this.staged[id] = {};
-    }
-
-    // Try to get the LOD if it's already loaded.
-    const cached = staged?.[lod];
-    if (cached !== undefined) {
-      return cached;
+    if (staged !== undefined) {
+      return staged;
     }
 
     // Not loaded, try to load it.
     const loaded = this.loadAsset(asset, lod);
     if (loaded.tag !== "Loading") {
       // Asset has been loaded, add it to staged.
-      this.staged[id]![lod] = loaded;
-      console.log(`[AssetLibrary.request] staged: ${id} (LOD=${lod})`, loaded);
+      this.staged[id] = loaded;
+      console.log(`[AssetLibrary.request] staged: ${id}`, loaded);
       return loaded;
     } else if (lod > 0) {
       // It's still loading, try a lower LOD.
@@ -223,7 +218,11 @@ export class AssetLibrary {
   }
 }
 
-export function getAssetID(asset: Asset): AssetID {
+export function getAssetID(asset: Asset, lod: AssetLOD): AssetID {
+  return `${getAssetIDBase(asset)}:${lod}`;
+}
+
+function getAssetIDBase(asset: Asset) {
   switch (asset.tag) {
     case "Ref":
       return asset.filename;

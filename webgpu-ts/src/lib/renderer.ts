@@ -23,16 +23,17 @@ export class Renderer {
   ) {
     this.assets = new AssetLibrary(device, args?.loaders);
     this.scene = args?.scene ?? {};
-    this.stageScene();
+    this.stageScene(performance.now());
   }
 
-  stageScene(now?: number) {
+  stageScene(now: number) {
+    // TODO: pass the Scene and Camera directly
     const entities = Object.entries(this.scene).map(([id, entity]) => ({
       id,
       entity,
       lod: 0,
     }));
-    return this.assets.stage(entities, now ?? performance.now());
+    return this.assets.stage(entities, now);
   }
 
   isLoading(): boolean {

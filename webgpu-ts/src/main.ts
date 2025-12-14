@@ -57,13 +57,10 @@ start(canvas, async (device: GPUDevice) => {
 
   const renderer = new Renderer(device, {
     scene: {
-      triangle: triangle,
-      pyramid: ref({ filename: "assets/pyramid.obj" }),
+      triangle1: triangle,
+      pyramid1: ref({ filename: "assets/pyramid.obj" }),
     },
   });
-
-  // const mesh = await renderer.assets.request("assets/triangle.obj");
-  // console.log(mesh);
 
   const renderPassDescriptor: GPURenderPassDescriptor = {
     label: "our basic canvas renderPass",
@@ -130,14 +127,15 @@ start(canvas, async (device: GPUDevice) => {
 
   requestAnimationFrame(render);
 
+  // Handle window resize.
   // https://webgpufundamentals.org/webgpu/lessons/webgpu-resizing-the-canvas.html
   const observer = new ResizeObserver((entries) => {
     for (const entry of entries) {
       const width =
-        entry.devicePixelContentBoxSize?.[0].inlineSize ||
+        entry.devicePixelContentBoxSize?.[0]?.inlineSize ||
         entry.contentBoxSize[0].inlineSize * devicePixelRatio;
       const height =
-        entry.devicePixelContentBoxSize?.[0].blockSize ||
+        entry.devicePixelContentBoxSize?.[0]?.blockSize ||
         entry.contentBoxSize[0].blockSize * devicePixelRatio;
       //   const canvas: HTMLCanvasElement = entry.target;
       canvas.width = Math.max(
