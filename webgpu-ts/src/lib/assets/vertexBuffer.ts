@@ -1,0 +1,15 @@
+import { BufferBase, type BufferSlot } from "./bufferBase";
+
+export class VertexBuffer extends BufferBase {
+  // Typical GPU cache line size is 128 bytes or 64 bytes.
+  // Stride: (position: vec3f, normal: vec3f, uv: vec2f)
+  //   (3+3+2)=8 float32 = 32 bytes, aligns well with cache line.
+  static readonly stride = (3 + 3 + 2) * Float32Array.BYTES_PER_ELEMENT;
+  constructor(device: GPUDevice) {
+    super(device, "VertexBuffer", GPUBufferUsage.VERTEX);
+  }
+
+  write(vertices: number[][]): BufferSlot {
+    return this.writeFloat32(vertices.flat());
+  }
+}
