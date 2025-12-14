@@ -4,6 +4,7 @@ import { IndexBuffer } from "./assets/indexBuffer";
 import { VertexBuffer } from "./assets/vertexBuffer";
 import { loadObj } from "./loaders/mesh.obj";
 import type { Entity, EntityID } from "./scene";
+import { stringHash } from "./stdlib";
 
 // As a proof of concept, this only supports loading, not unloading.
 // This means the entire scene must fit into GPU memory.
@@ -92,6 +93,10 @@ export class AssetLibrary {
     now: number,
   ) {
     // TODO: keep track on LRU of when an asset was used with `now`
+    entities.map(({ id, entity, lod }) => {
+      const assetID = getAssetID(entity.asset);
+      console.log(id, assetID);
+    });
     // Figure out assetID from entity.asset
     // Save entity's transform linked to its id
     // request asset
@@ -171,7 +176,7 @@ export class AssetLibrary {
   loadAsset(asset: Asset): LoadedAsset {
     switch (asset.tag) {
       case "Ref":
-        throw new Error("TODO: load Ref");
+        throw new Error("[loadAsset] TODO: Ref");
       case "Mesh":
         return {
           tag: "LoadedMesh",
@@ -183,5 +188,15 @@ export class AssetLibrary {
 
   free(id: AssetID, lod: AssetLOD) {
     throw new Error("TODO: LibraryMesh3D.free");
+  }
+}
+
+export function getAssetID(asset: Asset): AssetID {
+  switch (asset.tag) {
+    case "Ref":
+      return asset.filename;
+    case "Mesh":
+      const hash = stringHash(JSON.stringify([asset.vertices, asset.indices]));
+      return `Mesh<${hash}>`;
   }
 }

@@ -1,4 +1,4 @@
-import type { Asset } from "./assetLibrary";
+import type { Asset, AssetID } from "./assetLibrary";
 
 export type EntityID = string;
 

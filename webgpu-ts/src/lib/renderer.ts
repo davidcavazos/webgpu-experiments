@@ -35,14 +35,14 @@ export class Renderer {
     return this.assets.stage(entities, now ?? performance.now());
   }
 
-  levelOfDetail(
-    entityTransform: Float32Array,
-    cameraTransform: Float32Array,
-  ): AssetLOD {
-    // TODO: calculate level of detail
-    // - use distance
-    // - configurable settings
-    // - 3 to 5 LODs
-    return 0;
-  }
+  // levelOfDetail(
+  //   entityTransform: Float32Array,
+  //   cameraTransform: Float32Array,
+  // ): AssetLOD {
+  //   // TODO: calculate level of detail
+  //   // - use distance
+  //   // - configurable settings
+  //   // - 3 to 5 LODs
+  //   return 0;
+  // }
 }
