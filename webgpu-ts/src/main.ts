@@ -46,6 +46,7 @@ start(canvas, async (device: GPUDevice) => {
   });
 
   const triangle = mesh({
+    id: "triangle-mesh",
     vertices: [
       [0, 0, 0],
       [1, 0, 0],
@@ -57,12 +58,9 @@ start(canvas, async (device: GPUDevice) => {
   const renderer = new Renderer(device, {
     scene: {
       triangle: triangle,
-      // pyramid: ref({ filename: "assets/pyramid.obj" }),
+      pyramid: ref({ filename: "assets/pyramid.obj" }),
     },
   });
-
-  console.log("------------------");
-  await renderer.stageScene();
 
   // const mesh = await renderer.assets.request("assets/triangle.obj");
   // console.log(mesh);

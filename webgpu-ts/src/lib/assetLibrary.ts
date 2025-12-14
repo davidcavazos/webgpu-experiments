@@ -39,10 +39,15 @@ import { stringHash } from "./stdlib";
 export type FilePattern = string;
 export type AssetID = string;
 export type AssetLOD = number;
-export type AssetLoader = (
-  id: AssetID,
-  lod: AssetLOD,
-) => Promise<Asset | undefined>;
+export type RequestID = string;
+export type AssetLoader = (id: AssetID, lod: AssetLOD) => Promise<Asset>;
+
+export type AssetError = {
+  tag: "AssetError";
+  id: AssetID;
+  lod: AssetLOD;
+  reason: string;
+};
 
 export type Ref = {
   tag: "Ref";
@@ -50,22 +55,29 @@ export type Ref = {
 };
 export type Mesh = {
   tag: "Mesh";
+  id?: AssetID;
+  // TODO: lods: {AssetLOD: {vertices, indices}}
   vertices: number[][];
   indices: number[]; // TODO: faces: number[][]
 };
-export type Asset = Ref | Mesh;
+export type Asset = Ref | Mesh | AssetError;
 
+export type Loading = {
+  tag: "Loading";
+  requestID: RequestID;
+};
 export type LoadedMesh = {
   tag: "LoadedMesh";
   vertices: BufferSlot;
   indices: BufferSlot;
 };
-export type LoadedAsset = LoadedMesh;
+export type LoadedAsset = Loading | LoadedMesh | AssetError;
 
 // TODO: make this into a generic Library
 export class AssetLibrary {
   loaders: Record<FilePattern, AssetLoader>;
   staged: Record<AssetID, Record<AssetLOD, LoadedAsset>>;
+  requests: Record<RequestID, Promise<Asset>>;
   entities: EntityBuffer;
   vertexBuffer: VertexBuffer;
   indexBuffer: IndexBuffer;
@@ -79,6 +91,7 @@ export class AssetLibrary {
       "*.obj": loadObj,
     };
     this.staged = {};
+    this.requests = {};
     this.entities = new EntityBuffer(device);
     this.vertexBuffer = new VertexBuffer(device);
     this.indexBuffer = new IndexBuffer(device);
@@ -88,66 +101,98 @@ export class AssetLibrary {
     }
   }
 
-  async stage(
+  stage(
     entities: { id: EntityID; entity: Entity; lod: AssetLOD }[],
     now: number,
   ) {
     // TODO: keep track on LRU of when an asset was used with `now`
-    entities.map(({ id, entity, lod }) => {
-      const assetID = getAssetID(entity.asset);
-      console.log(id, assetID);
+    entities.map(async ({ id, entity, lod }) => {
+      const asset = this.request(entity.asset, lod);
+      console.log(id, asset);
     });
     // Figure out assetID from entity.asset
     // Save entity's transform linked to its id
     // request asset
   }
 
-  async request(id: AssetID, lod: AssetLOD = 0): Promise<LoadedAsset> {
-    const asset = this.staged[id];
-    if (asset === undefined) {
+  isLoading(): boolean {
+    return Object.keys(this.requests).length > 0;
+  }
+
+  request(asset: Asset, lod: AssetLOD = 0): LoadedAsset {
+    const id = getAssetID(asset);
+    const staged = this.staged[id];
+    if (staged === undefined) {
       this.staged[id] = {};
     }
 
     // Try to get the LOD if it's already loaded.
-    const cached = asset?.[lod];
+    const cached = staged?.[lod];
     if (cached !== undefined) {
       return cached;
     }
 
     // Not loaded, try to load it.
-    const loader = this.findLoader(id);
-    if (loader === undefined) {
-      throw new Error(
-        `[LibraryMesh3D.load] Could not find a loader for: ${id}`,
-      );
-    }
-    const data = await loader(id, lod);
-    if (data !== undefined) {
-      const mesh = this.loadAsset(data);
-      this.staged[id]![lod] = mesh;
-      return mesh;
-    }
-
-    // Couldn't load it, try a lower LOD.
-    if (lod > 0) {
-      console.debug(
-        `[LibraryMesh3D.request] Could not load ${id}.lod${lod}, using ${id}.lod${lod - 1}`,
-      );
-      const lowerLOD = await this.request(id, lod - 1);
-      if (lowerLOD !== undefined) {
-        this.staged[id]![lod] = lowerLOD;
+    const loaded = this.loadAsset(asset, lod);
+    if (loaded.tag !== "Loading") {
+      // Asset has been loaded, add it to staged.
+      this.staged[id]![lod] = loaded;
+      console.log(`[AssetLibrary.request] staged: ${id} (LOD=${lod})`, loaded);
+      return loaded;
+    } else if (lod > 0) {
+      // It's still loading, try a lower LOD.
+      const lowerLOD = this.request(asset, lod - 1);
+      if (lowerLOD.tag !== "Loading") {
         return lowerLOD;
       }
     }
-
-    // TODO: Return some placeholder instead of failing.
-    // Nothing else to try, log the error and fail.
-    throw new Error(
-      `[LibraryMesh3D.request] Could not load: ${id} (lod=${lod})`,
-    );
+    // Nothing else to try, return whatever `loadAsset` gave us.
+    // This could either be Loading or a AssetError.
+    return loaded;
   }
 
-  findLoader(id: AssetID): AssetLoader | undefined {
+  loadAsset(asset: Asset, lod: AssetLOD): LoadedAsset {
+    switch (asset.tag) {
+      case "Ref":
+        const reqID = `${asset.filename}:${lod}`;
+        const request = this.requests[reqID];
+        if (request === undefined) {
+          // Create a new request.
+          const loader = this.findFileLoader(asset.filename);
+          if (loader === undefined) {
+            throw new Error(
+              `[LibraryMesh3D.load] Could not find a loader for: ${id}`,
+            );
+          }
+          this.requests[reqID] = loader(asset.filename, lod)
+            .then((asset) => {
+              delete this.requests[reqID];
+              return this.request(asset);
+            })
+            .catch((e) => {
+              return e;
+            })
+            .finally(() => {});
+        }
+        return { tag: "Loading", requestID: reqID };
+
+      case "Mesh":
+        return {
+          tag: "LoadedMesh",
+          vertices: this.vertexBuffer.write(asset.vertices),
+          indices: this.indexBuffer.write(asset.indices),
+        };
+
+      case "AssetError":
+        return asset;
+    }
+  }
+
+  free(id: AssetID, lod: AssetLOD) {
+    throw new Error("TODO: LibraryMesh3D.free");
+  }
+
+  findFileLoader(id: AssetID): AssetLoader | undefined {
     // 1) Try exact match.
     const loader = this.loaders[id];
     if (loader !== undefined) {
@@ -165,29 +210,16 @@ export class AssetLibrary {
       }
 
       // 3) Try regular expression.
-      if (id.match(pattern)) {
-        this.loaders[id] = loader; // cache it
-        return loader;
+      try {
+        if (id.match(pattern)) {
+          this.loaders[id] = loader; // cache it
+          return loader;
+        }
+      } catch (_) {
+        // Not a valid regular expression, just skip.
       }
     }
     return undefined;
-  }
-
-  loadAsset(asset: Asset): LoadedAsset {
-    switch (asset.tag) {
-      case "Ref":
-        throw new Error("[loadAsset] TODO: Ref");
-      case "Mesh":
-        return {
-          tag: "LoadedMesh",
-          vertices: this.vertexBuffer.write(asset.vertices),
-          indices: this.indexBuffer.write(asset.indices),
-        };
-    }
-  }
-
-  free(id: AssetID, lod: AssetLOD) {
-    throw new Error("TODO: LibraryMesh3D.free");
   }
 }
 
@@ -196,7 +228,12 @@ export function getAssetID(asset: Asset): AssetID {
     case "Ref":
       return asset.filename;
     case "Mesh":
+      if (asset.id !== undefined) {
+        return asset.id;
+      }
       const hash = stringHash(JSON.stringify([asset.vertices, asset.indices]));
       return `Mesh<${hash}>`;
+    case "AssetError":
+      return `AssetError<${asset.id}:${asset.lod}>`;
   }
 }

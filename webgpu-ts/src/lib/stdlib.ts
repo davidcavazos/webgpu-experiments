@@ -24,3 +24,7 @@ export function stringHash(str: string): string {
   // Return as a positive integer string for simplicity
   return (hash >>> 0).toString(16);
 }
+
+export function wait(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}

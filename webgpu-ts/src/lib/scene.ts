@@ -34,6 +34,7 @@ export function ref(args: {
 }
 
 export function mesh(args: {
+  id?: AssetID;
   vertices: number[][];
   indices: number[];
   transform?: Float32Array;
@@ -42,6 +43,7 @@ export function mesh(args: {
   return entity({
     asset: {
       tag: "Mesh",
+      id: args.id,
       vertices: args.vertices,
       indices: args.indices,
     },

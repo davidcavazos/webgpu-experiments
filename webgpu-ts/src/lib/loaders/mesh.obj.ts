@@ -1,4 +1,4 @@
-import type { AssetLOD, Mesh } from "../assetLibrary";
+import type { Asset, AssetID, AssetLOD, Mesh } from "../assetLibrary";
 import { toFixedLength } from "../stdlib";
 import { vec3 } from "../vec3";
 
@@ -12,19 +12,39 @@ export interface MeshObj {
 export async function loadObj(
   filename: string,
   lod: AssetLOD = 0,
-): Promise<Mesh | undefined> {
+): Promise<Asset> {
   if (lod !== 0) {
-    return undefined;
+    return {
+      tag: "AssetError",
+      id: filename,
+      lod: lod,
+      reason:
+        "[loaders/mesh.obj.ts:loadObj] LOD higher than 0 not yet supported",
+    };
   }
-  const resp = await fetch(filename);
-  if (!resp.ok) {
-    throw new Error(`${resp.statusText}: ${filename}`);
+  try {
+    const resp = await fetch(filename);
+    if (!resp.ok) {
+      return {
+        tag: "AssetError",
+        id: filename,
+        lod: lod,
+        reason: `[loaders/mesh.obj.ts:loadObj] ${resp.statusText}`,
+      };
+    }
+    const contents = await resp.text();
+    return parseObj(filename, contents);
+  } catch (e) {
+    return {
+      tag: "AssetError",
+      id: filename,
+      lod: lod,
+      reason: `[loaders/mesh.obj.ts:loadObj] ${e}`,
+    };
   }
-  const contents = await resp.text();
-  return parseObj(contents);
 }
 
-export function parseObj(contents: string): Mesh {
+export function parseObj(id: AssetID, contents: string): Mesh {
   // https://en.wikipedia.org/wiki/Wavefront_.obj_file
   const obj: MeshObj = { positions: [], uvs: [], normals: [], faces: [] };
   for (const line of contents.split("\n")) {
@@ -58,10 +78,10 @@ export function parseObj(contents: string): Mesh {
         console.error(`[mesh3d.obj.parseObj] Not supported: ${id}`);
     }
   }
-  return objToMesh(obj);
+  return objToMesh(id, obj);
 }
 
-export function objToMesh(obj: MeshObj): Mesh {
+export function objToMesh(id: AssetID, obj: MeshObj): Mesh {
   // The same vertex position could have different uv or normals.
   // Each vertex is a unique combination of (vertex, uv, normal).
   const uniqueFaces = [...new Set(obj.faces.flat())].sort();
@@ -97,5 +117,5 @@ export function objToMesh(obj: MeshObj): Mesh {
     ];
   });
   const indices = obj.faces.flat().map((face) => uniqueFaces.indexOf(face));
-  return { tag: "Mesh", vertices, indices };
+  return { tag: "Mesh", id, vertices, indices };
 }
