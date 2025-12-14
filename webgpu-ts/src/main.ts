@@ -2,6 +2,7 @@ import * as library from "./lib/assetLibrary";
 import { loadObj } from "./lib/loaders/mesh.obj";
 import { mat4 } from "./lib/mat4";
 import { Renderer } from "./lib/renderer";
+import { entity, mesh, ref, type Entity } from "./lib/scene";
 
 const canvas: HTMLCanvasElement = document.querySelector("#canvas")!;
 const info = document.querySelector("#info")!;
@@ -44,9 +45,24 @@ start(canvas, async (device: GPUDevice) => {
     alphaMode: "premultiplied",
   });
 
-  const renderer = new Renderer(device, {
-    scene: {},
+  const triangle = mesh({
+    vertices: [
+      [0, 0, 0],
+      [1, 0, 0],
+      [0, 1, 0],
+    ],
+    indices: [0, 1, 2],
   });
+
+  const renderer = new Renderer(device, {
+    scene: {
+      triangle: triangle,
+      // pyramid: ref({ filename: "assets/pyramid.obj" }),
+    },
+  });
+
+  console.log("------------------");
+  await renderer.stageScene();
 
   // const mesh = await renderer.assets.request("assets/triangle.obj");
   // console.log(mesh);

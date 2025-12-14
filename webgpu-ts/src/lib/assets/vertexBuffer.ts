@@ -1,3 +1,4 @@
+import { toFixedLength } from "../stdlib";
 import { BufferBase, type BufferSlot } from "./bufferBase";
 
 export class VertexBuffer extends BufferBase {
@@ -10,6 +11,7 @@ export class VertexBuffer extends BufferBase {
   }
 
   write(vertices: number[][]): BufferSlot {
-    return this.writeFloat32(vertices.flat());
+    const data = vertices.map((v) => toFixedLength(v, 3 + 3 + 2, 0)).flat();
+    return this.writeFloat32(data);
   }
 }

@@ -2,7 +2,7 @@ import type { BufferSlot } from "./assets/bufferBase";
 import { IndexBuffer } from "./assets/indexBuffer";
 import { VertexBuffer } from "./assets/vertexBuffer";
 import { loadObj } from "./loaders/mesh.obj";
-import type { EntityID } from "./scene";
+import type { Entity, EntityID } from "./scene";
 
 // As a proof of concept, this only supports loading, not unloading.
 // This means the entire scene must fit into GPU memory.
@@ -42,12 +42,16 @@ export type AssetLoader = (
   lod: AssetLOD,
 ) => Promise<Asset | undefined>;
 
+export type Ref = {
+  tag: "Ref";
+  filename: string;
+};
 export type Mesh = {
   tag: "Mesh";
   vertices: number[][];
   indices: number[]; // TODO: faces: number[][]
 };
-export type Asset = Mesh;
+export type Asset = Ref | Mesh;
 
 export type LoadedMesh = {
   tag: "LoadedMesh";
@@ -59,7 +63,7 @@ export type LoadedAsset = LoadedMesh;
 // TODO: make this into a generic Library
 export class AssetLibrary {
   loaders: Record<FilePattern, AssetLoader>;
-  assets: Record<AssetID, Record<AssetLOD, LoadedAsset>>;
+  staged: Record<AssetID, Record<AssetLOD, LoadedAsset>>;
   vertexBuffer: VertexBuffer;
   indexBuffer: IndexBuffer;
 
@@ -71,7 +75,7 @@ export class AssetLibrary {
       ...loaders,
       "*.obj": loadObj,
     };
-    this.assets = {};
+    this.staged = {};
     this.vertexBuffer = new VertexBuffer(device);
     this.indexBuffer = new IndexBuffer(device);
 
@@ -80,13 +84,20 @@ export class AssetLibrary {
     }
   }
 
-  async request(
-    id: AssetID,
-    lod: AssetLOD = 0,
-  ): Promise<LoadedAsset | undefined> {
-    const asset = this.assets[id];
+  async stage(
+    entities: { id: EntityID; entity: Entity; lod: AssetLOD }[],
+    now: number,
+  ) {
+    // TODO: keep track on LRU of when an asset was used with `now`
+    // Figure out assetID from entity.asset
+    // Save entity's transform linked to its id
+    // request asset
+  }
+
+  async request(id: AssetID, lod: AssetLOD = 0): Promise<LoadedAsset> {
+    const asset = this.staged[id];
     if (asset === undefined) {
-      this.assets[id] = {};
+      this.staged[id] = {};
     }
 
     // Try to get the LOD if it's already loaded.
@@ -98,13 +109,14 @@ export class AssetLibrary {
     // Not loaded, try to load it.
     const loader = this.findLoader(id);
     if (loader === undefined) {
-      console.error(`[LibraryMesh3D.load] Could not find a loader for: ${id}`);
-      return undefined;
+      throw new Error(
+        `[LibraryMesh3D.load] Could not find a loader for: ${id}`,
+      );
     }
     const data = await loader(id, lod);
     if (data !== undefined) {
-      const mesh = this.load(data);
-      this.assets[id]![lod] = mesh;
+      const mesh = this.loadAsset(data);
+      this.staged[id]![lod] = mesh;
       return mesh;
     }
 
@@ -115,14 +127,16 @@ export class AssetLibrary {
       );
       const lowerLOD = await this.request(id, lod - 1);
       if (lowerLOD !== undefined) {
-        this.assets[id]![lod] = lowerLOD;
+        this.staged[id]![lod] = lowerLOD;
         return lowerLOD;
       }
     }
 
+    // TODO: Return some placeholder instead of failing.
     // Nothing else to try, log the error and fail.
-    console.error(`[LibraryMesh3D.request] Could not load: ${id} (lod=${lod})`);
-    return undefined;
+    throw new Error(
+      `[LibraryMesh3D.request] Could not load: ${id} (lod=${lod})`,
+    );
   }
 
   findLoader(id: AssetID): AssetLoader | undefined {
@@ -151,8 +165,10 @@ export class AssetLibrary {
     return undefined;
   }
 
-  load(asset: Asset): LoadedAsset {
+  loadAsset(asset: Asset): LoadedAsset {
     switch (asset.tag) {
+      case "Ref":
+        throw new Error("TODO: load Ref");
       case "Mesh":
         return {
           tag: "LoadedMesh",

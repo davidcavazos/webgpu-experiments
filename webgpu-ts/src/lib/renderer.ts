@@ -3,6 +3,7 @@ import {
   type Asset,
   type AssetID,
   type AssetLoader,
+  type AssetLOD,
   type FilePattern,
   type Mesh,
 } from "./assetLibrary";
@@ -10,6 +11,7 @@ import type { Scene } from "./scene";
 
 export class Renderer {
   // camera: Camera
+  scene: Scene;
   assets: AssetLibrary;
 
   constructor(
@@ -20,12 +22,27 @@ export class Renderer {
     },
   ) {
     this.assets = new AssetLibrary(device, args?.loaders);
-    if (args?.scene) {
-      this.loadScene(args.scene);
-    }
+    this.scene = args?.scene ?? {};
+    this.stageScene();
   }
 
-  loadScene(scene: Scene) {
-    console.log("loadScene");
+  async stageScene(now?: number) {
+    const entities = Object.entries(this.scene).map(([id, entity]) => ({
+      id,
+      entity,
+      lod: 0,
+    }));
+    return this.assets.stage(entities, now ?? performance.now());
+  }
+
+  levelOfDetail(
+    entityTransform: Float32Array,
+    cameraTransform: Float32Array,
+  ): AssetLOD {
+    // TODO: calculate level of detail
+    // - use distance
+    // - configurable settings
+    // - 3 to 5 LODs
+    return 0;
   }
 }
