@@ -1,4 +1,4 @@
-import * as library from "./lib/assetLibrary";
+import * as library from "./lib/engine";
 import { loadObj } from "./lib/loaders/mesh.obj";
 import { mat4 } from "./lib/mat4";
 import { Renderer } from "./lib/renderer";
@@ -53,64 +53,44 @@ start(canvas, async (device: GPUDevice) => {
       [0, 1, 0],
     ],
     indices: [0, 1, 2],
+    transform: mat4.translate(mat4.identity(), [0, 0, -4]),
   });
 
-  const renderer = new Renderer(device, {
+  const renderer = new Renderer({
+    device,
+    canvas,
+    context,
     scene: {
-      triangle1: triangle,
-      pyramid1: ref({ filename: "assets/pyramid.obj" }),
+      triangle1: mesh({
+        id: "triangle-mesh",
+        vertices: [
+          [0, 0, 0],
+          [1, 0, 0],
+          [0, 1, 0],
+        ],
+        indices: [0, 1, 2],
+        transform: mat4.translate(mat4.identity(), [0, 0, -4]),
+      }),
+      // triangle2: mesh({
+      //   id: "triangle-mesh",
+      //   vertices: [
+      //     [0, 0, 0],
+      //     [1, 0, 0],
+      //     [0, 1, 0],
+      //   ],
+      //   indices: [0, 1, 2],
+      //   transform: mat4.translate(mat4.identity(), [5, 0, -4]),
+      // }),
+      // pyramid1: ref({ filename: "assets/pyramid.obj" }),
     },
   });
-
-  const renderPassDescriptor: GPURenderPassDescriptor = {
-    label: "our basic canvas renderPass",
-    colorAttachments: [
-      {
-        // view: <- to be filled out when we render
-        // view: context.getCurrentTexture()?.createView()!,
-        clearValue: { r: 0.0, g: 0.0, b: 0.0, a: 1.0 },
-        loadOp: "clear",
-        storeOp: "store",
-      },
-    ],
-
-    // depthStencilAttachment: {
-    //   // view: <- to be filled out when we render
-    //   depthClearValue: 1.0,
-    //   depthLoadOp: "clear",
-    //   depthStoreOp: "store",
-    // },
-  };
-
-  let viewMatrix = new Float32Array(4 * 4);
-  mat4.projection(canvas.clientWidth, canvas.clientHeight, 400, viewMatrix);
 
   let lastRenderTime = 0;
   function render(now: number) {
     const startTime = performance.now();
 
-    // Set the render texture.
-    // This must be done every frame because the WebGPU specification
-    // allows browsers to return a different texture every time
-    // getCurrentTexture() is called (browser optimizations).
-    renderPassDescriptor.colorAttachments[0].view = context!
-      .getCurrentTexture()
-      .createView();
-
-    const encoder = device.createCommandEncoder();
-    {
-      // Main render pass.
-      const pass = encoder.beginRenderPass(renderPassDescriptor);
-
-      // mesh.getViewMatrix().set(viewMatrix);
-      // mesh.translate([200, 200, 0]);
-      // mesh.rotate([40, 25, 325]);
-      // mesh.scale([100, 100, 100]);
-      // mesh.render(pass);
-
-      pass.end();
-    }
-    device.queue.submit([encoder.finish()]);
+    // Stage and draw the scene.
+    renderer.draw(now);
 
     // Performance metrics
     if (Math.floor(now * 0.02) !== Math.floor(lastRenderTime * 0.02)) {

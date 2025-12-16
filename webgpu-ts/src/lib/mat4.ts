@@ -1,27 +1,65 @@
 export const mat4 = {
   projection(width, height, depth, dst) {
     // Note: This matrix flips the Y axis so that 0 is at the top.
+    return mat4.ortho(0, width, height, 0, depth, -depth, dst);
+  },
+
+  perspective(fieldOfViewYInRadians, aspect, zNear, zFar, dst) {
     dst = dst || new Float32Array(16);
-    dst[0] = 2 / width;
+
+    const f = Math.tan(Math.PI * 0.5 - 0.5 * fieldOfViewYInRadians);
+    const rangeInv = 1 / (zNear - zFar);
+
+    dst[0] = f / aspect;
     dst[1] = 0;
     dst[2] = 0;
     dst[3] = 0;
+
     dst[4] = 0;
-    dst[5] = -2 / height;
+    dst[5] = f;
     dst[6] = 0;
     dst[7] = 0;
+
     dst[8] = 0;
     dst[9] = 0;
-    dst[10] = 0.5 / depth;
-    dst[11] = 0;
-    dst[12] = -1;
-    dst[13] = 1;
-    dst[14] = 0.5;
-    dst[15] = 1;
+    dst[10] = zFar * rangeInv;
+    dst[11] = -1;
+
+    dst[12] = 0;
+    dst[13] = 0;
+    dst[14] = zNear * zFar * rangeInv;
+    dst[15] = 0;
+
     return dst;
   },
 
-  identity(dst) {
+  ortho(left, right, bottom, top, near, far, dst?: Float32Array) {
+    dst = dst || new Float32Array(16);
+
+    dst[0] = 2 / (right - left);
+    dst[1] = 0;
+    dst[2] = 0;
+    dst[3] = 0;
+
+    dst[4] = 0;
+    dst[5] = 2 / (top - bottom);
+    dst[6] = 0;
+    dst[7] = 0;
+
+    dst[8] = 0;
+    dst[9] = 0;
+    dst[10] = 1 / (near - far);
+    dst[11] = 0;
+
+    dst[12] = (right + left) / (left - right);
+    dst[13] = (top + bottom) / (bottom - top);
+    dst[14] = near / (near - far);
+    dst[15] = 1;
+
+    return dst;
+  },
+
+  identity(dst?: Float32Array) {
     dst = dst || new Float32Array(16);
     dst[0] = 1;
     dst[1] = 0;
@@ -211,7 +249,7 @@ export const mat4 = {
     return dst;
   },
 
-  translate(m, translation, dst) {
+  translate(m, translation, dst?: Float32Array) {
     return mat4.multiply(m, mat4.translation(translation), dst);
   },
 

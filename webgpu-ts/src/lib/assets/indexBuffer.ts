@@ -1,4 +1,13 @@
-import { BufferBase, type BufferSlot } from "./bufferBase";
+import { BufferBase, type ChunkID } from "./bufferBase";
+
+export type IndexBufferSlot = {
+  chunk: ChunkID;
+  buffer: GPUBuffer;
+  offset: number;
+  size: number;
+  count: number;
+  format: GPUIndexFormat;
+};
 
 export class IndexBuffer extends BufferBase {
   constructor(device: GPUDevice) {
@@ -9,14 +18,17 @@ export class IndexBuffer extends BufferBase {
     );
   }
 
-  write(indices: number[]): BufferSlot {
+  write(indices: number[]): IndexBufferSlot {
+    // In WebGPU, only uint16 or uint32 are valid GPUIndexFormat
     const maxIndex = Math.max(...indices);
-    if (maxIndex <= 0xff) {
-      return this.writeUInt8(indices);
-    }
+    // if (maxIndex <= 0xff) {
+    //   return this.writeUInt8(indices);
+    // }
     if (maxIndex <= 0xffff) {
-      return this.writeUInt16(indices);
+      const slot = this.writeUInt16(indices);
+      return { ...slot, count: indices.length, format: "uint16" };
     }
-    return this.writeUInt32(indices);
+    const slot = this.writeUInt32(indices);
+    return { ...slot, count: indices.length, format: "uint32" };
   }
 }

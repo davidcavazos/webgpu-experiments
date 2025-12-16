@@ -1,10 +1,10 @@
 import type { BufferSlot } from "./assets/bufferBase";
-import { EntityBuffer } from "./assets/entityBuffer";
-import { IndexBuffer } from "./assets/indexBuffer";
-import { VertexBuffer } from "./assets/vertexBuffer";
+import { EntityBuffer, type EntityBufferSlot } from "./assets/entityBuffer";
+import { IndexBuffer, type IndexBufferSlot } from "./assets/indexBuffer";
+import { VertexBuffer, type VertexBufferSlot } from "./assets/vertexBuffer";
 import { loadObj } from "./loaders/mesh.obj";
 import type { Entity, EntityID } from "./scene";
-import { stringHash } from "./stdlib";
+import { parseInt, stringHash } from "./stdlib";
 
 // As a proof of concept, this only supports loading, not unloading.
 // This means the entire scene must fit into GPU memory.
@@ -64,21 +64,32 @@ export type Asset = Ref | Mesh | AssetError;
 
 export type Loading = {
   tag: "Loading";
-  requestID: RequestID;
+  id: RequestID;
 };
 export type LoadedMesh = {
   tag: "LoadedMesh";
-  vertices: BufferSlot;
-  indices: BufferSlot;
+  vertices: VertexBufferSlot;
+  indices: IndexBufferSlot;
 };
 export type LoadedAsset = Loading | LoadedMesh | AssetError;
 
-// TODO: make this into a generic Library
-export class AssetLibrary {
-  loaders: Record<FilePattern, AssetLoader>;
+export interface BatchDraw {
+  entities: EntityBufferSlot;
+  vertices: VertexBufferSlot;
+  indices: IndexBufferSlot;
+}
+
+// TODO: make the engine API-agnostic
+// - remove all mentions of WebGPU, use wrappers instead
+// - include an interface for an API implementation (eg. WebGPU, Vulkan)
+export class Engine {
+  readonly loaders: Record<FilePattern, AssetLoader>;
   staged: Record<AssetID, LoadedAsset>;
-  requests: Record<RequestID, Promise<Asset>>;
-  entities: EntityBuffer; // TODO: remove this?
+  loading: Record<RequestID, Promise<Asset>>;
+  passes: {
+    opaque: Record<AssetID, BatchDraw>;
+  };
+  entityBuffer: EntityBuffer;
   vertexBuffer: VertexBuffer;
   indexBuffer: IndexBuffer;
 
@@ -91,9 +102,11 @@ export class AssetLibrary {
       "*.obj": loadObj,
     };
     this.staged = {};
-    this.requests = {};
-    this.entities = new EntityBuffer(device);
-    this.instances = {};
+    this.loading = {};
+    this.passes = {
+      opaque: {},
+    };
+    this.entityBuffer = new EntityBuffer(device);
     this.vertexBuffer = new VertexBuffer(device);
     this.indexBuffer = new IndexBuffer(device);
 
@@ -102,55 +115,91 @@ export class AssetLibrary {
     }
   }
 
-  stage(
-    entities: { id: EntityID; entity: Entity; lod: AssetLOD }[],
-    now: number,
-  ) {
+  stage(scene: { entity: Entity; lod: AssetLOD }[], now: number) {
     // TODO: keep track on LRU of when an asset was used with `now`
-    entities.map(async ({ id, entity, lod }) => {
-      const asset = this.request(entity.asset, lod);
-      console.log(id, asset);
-    });
-    // Figure out assetID from entity.asset
-    // Save entity's transform linked to its id
-    // request asset
+    let opaques: Record<AssetID, { entities: Entity[]; asset: LoadedMesh }> =
+      {};
+    for (const { entity, lod } of scene) {
+      const { id, asset } = this.request(entity.asset, lod);
+      switch (asset.tag) {
+        case "LoadedMesh":
+          if (id in opaques) {
+            opaques[id]?.entities.push(entity);
+          } else {
+            opaques[id] = { entities: [entity], asset };
+          }
+          break;
+      }
+    }
+    this.entityBuffer.clear();
+    this.passes = {
+      opaque: Object.fromEntries(
+        Object.entries(opaques).map(([id, { entities, asset }]) => {
+          const batch: BatchDraw = {
+            entities: this.entityBuffer.write(entities),
+            vertices: asset.vertices,
+            indices: asset.indices,
+          };
+          return [id, batch];
+        }),
+      ),
+    };
+    // scene.map(async ({ id, entity, lod }) => {
+    //   const staged = this.request(entity.asset, lod);
+    //   const slot = this.entities.write(entity);
+    //   if (!(staged.id in this.passes.opaque)) {
+    //     this.passes.opaque[staged.id] = [];
+    //   }
+    //   this.passes.opaque[staged.id]?.push({
+    //     id,
+    //     entity: slot,
+    //   });
+    // });
   }
 
   isLoading(): boolean {
-    return Object.keys(this.requests).length > 0;
+    return Object.keys(this.loading).length > 0;
   }
 
-  request(asset: Asset, lod: AssetLOD = 0): LoadedAsset {
-    const id = getAssetID(asset, lod);
-    const staged = this.staged[id];
-    if (staged !== undefined) {
-      return staged;
-    }
+  splitAssetID(id: AssetID): { base: string; lod: AssetLOD } {
+    const [base, lod] = id.split(":", 2);
+    return { base: base ?? "", lod: parseInt(lod ?? "0") };
+  }
 
-    // Not loaded, try to load it.
-    const loaded = this.loadAsset(asset, lod);
-    if (loaded.tag !== "Loading") {
-      // Asset has been loaded, add it to staged.
-      this.staged[id] = loaded;
-      console.log(`[AssetLibrary.request] staged: ${id}`, loaded);
-      return loaded;
-    } else if (lod > 0) {
-      // It's still loading, try a lower LOD.
-      const lowerLOD = this.request(asset, lod - 1);
-      if (lowerLOD.tag !== "Loading") {
-        return lowerLOD;
+  isLowerLOD(id1: AssetID, id2: AssetID): boolean {
+    const x = this.splitAssetID(id1);
+    const y = this.splitAssetID(id2);
+    return x.base === y.base && x.lod < y.lod;
+  }
+
+  request(
+    asset: Asset,
+    lod: AssetLOD = 0,
+  ): { id: AssetID; asset: LoadedAsset } {
+    const id = getAssetID(asset, lod);
+    if (!(id in this.staged)) {
+      // Not loaded, try to load it.
+      this.staged[id] = this.loadAsset(id, asset, lod);
+    }
+    const staged = this.staged[id]!;
+    if (staged.tag === "Loading") {
+      // Still loading, try to find a lower LOD.
+      const lowerAssetId = Object.keys(this.staged)
+        .filter((id2) => this.isLowerLOD(id, id2))
+        .sort()[0];
+      if (lowerAssetId !== undefined) {
+        return { id, asset: this.staged[lowerAssetId]! };
       }
     }
     // Nothing else to try, return whatever `loadAsset` gave us.
     // This could either be Loading or a AssetError.
-    return loaded;
+    return { id, asset: staged };
   }
 
-  loadAsset(asset: Asset, lod: AssetLOD): LoadedAsset {
+  loadAsset(id: AssetID, asset: Asset, lod: AssetLOD): LoadedAsset {
     switch (asset.tag) {
       case "Ref":
-        const reqID = `${asset.filename}:${lod}`;
-        const request = this.requests[reqID];
+        const request = this.loading[id];
         if (request === undefined) {
           // Create a new request.
           const loader = this.findFileLoader(asset.filename);
@@ -159,9 +208,9 @@ export class AssetLibrary {
               `[LibraryMesh3D.load] Could not find a loader for: ${id}`,
             );
           }
-          this.requests[reqID] = loader(asset.filename, lod)
+          this.loading[id] = loader(asset.filename, lod)
             .then((asset) => {
-              delete this.requests[reqID];
+              delete this.loading[id];
               return this.request(asset);
             })
             .catch((e) => {
@@ -169,7 +218,7 @@ export class AssetLibrary {
             })
             .finally(() => {});
         }
-        return { tag: "Loading", requestID: reqID };
+        return { tag: "Loading", id };
 
       case "Mesh":
         return {

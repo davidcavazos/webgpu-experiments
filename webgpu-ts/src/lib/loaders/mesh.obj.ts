@@ -1,4 +1,4 @@
-import type { Asset, AssetID, AssetLOD, Mesh } from "../assetLibrary";
+import type { Asset, AssetID, AssetLOD, Mesh } from "../engine";
 import { toFixedLength } from "../stdlib";
 import { vec3 } from "../vec3";
 

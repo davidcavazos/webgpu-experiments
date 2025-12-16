@@ -1,4 +1,5 @@
-import type { Asset, AssetID } from "./assetLibrary";
+import type { Asset, AssetID } from "./engine";
+import { mat4 } from "./mat4";
 
 export type EntityID = string;
 
@@ -16,7 +17,7 @@ export function entity(args: {
 }): Entity {
   return {
     asset: args.asset,
-    transform: args.transform ?? new Float32Array(4 * 4).fill(0),
+    transform: args.transform ? args.transform : mat4.identity(),
     entities: args.entities ?? {},
   };
 }
