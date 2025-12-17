@@ -40,7 +40,10 @@ export type FilePattern = string;
 export type AssetID = string;
 export type AssetLOD = number;
 export type RequestID = string;
-export type AssetLoader = (id: AssetID, lod: AssetLOD) => Promise<Asset>;
+export type AssetLoader = (
+  id: AssetID,
+  lod: AssetLOD,
+) => Promise<AssetDescriptor>;
 
 export type AssetError = {
   tag: "AssetError";
@@ -49,29 +52,29 @@ export type AssetError = {
   reason: string;
 };
 
-export type Ref = {
-  tag: "Ref";
+export type AssetReference = {
+  tag: "AssetReference";
   filename: string;
 };
-export type Mesh = {
-  tag: "Mesh";
+export type MeshDescriptor = {
+  tag: "MeshDescriptor";
   id?: AssetID;
   // TODO: lods: {AssetLOD: {vertices, indices}}
   vertices: number[][];
   indices: number[]; // TODO: faces: number[][]
 };
-export type Asset = Ref | Mesh | AssetError;
+export type AssetDescriptor = AssetReference | MeshDescriptor | AssetError;
 
-export type Loading = {
-  tag: "Loading";
+export type AssetLoading = {
+  tag: "AssetLoading";
   id: RequestID;
 };
-export type LoadedMesh = {
-  tag: "LoadedMesh";
+export type Mesh = {
+  tag: "Mesh";
   vertices: VertexBufferSlot;
   indices: IndexBufferSlot;
 };
-export type LoadedAsset = Loading | LoadedMesh | AssetError;
+export type Asset = AssetLoading | Mesh | AssetError;
 
 export interface BatchDraw {
   entities: EntityBufferSlot;
@@ -84,8 +87,8 @@ export interface BatchDraw {
 // - include an interface for an API implementation (eg. WebGPU, Vulkan)
 export class Engine {
   readonly loaders: Record<FilePattern, AssetLoader>;
-  staged: Record<AssetID, LoadedAsset>;
-  loading: Record<RequestID, Promise<Asset>>;
+  staged: Record<AssetID, Asset>;
+  loading: Record<RequestID, Promise<AssetDescriptor>>;
   passes: {
     opaque: Record<AssetID, BatchDraw>;
   };
@@ -117,12 +120,11 @@ export class Engine {
 
   stage(scene: { entity: Entity; lod: AssetLOD }[], now: number) {
     // TODO: keep track on LRU of when an asset was used with `now`
-    let opaques: Record<AssetID, { entities: Entity[]; asset: LoadedMesh }> =
-      {};
+    let opaques: Record<AssetID, { entities: Entity[]; asset: Mesh }> = {};
     for (const { entity, lod } of scene) {
       const { id, asset } = this.request(entity.asset, lod);
       switch (asset.tag) {
-        case "LoadedMesh":
+        case "Mesh":
           if (id in opaques) {
             opaques[id]?.entities.push(entity);
           } else {
@@ -173,16 +175,16 @@ export class Engine {
   }
 
   request(
-    asset: Asset,
+    asset: AssetDescriptor,
     lod: AssetLOD = 0,
-  ): { id: AssetID; asset: LoadedAsset } {
+  ): { id: AssetID; asset: Asset } {
     const id = getAssetID(asset, lod);
     if (!(id in this.staged)) {
       // Not loaded, try to load it.
       this.staged[id] = this.loadAsset(id, asset, lod);
     }
     const staged = this.staged[id]!;
-    if (staged.tag === "Loading") {
+    if (staged.tag === "AssetLoading") {
       // Still loading, try to find a lower LOD.
       const lowerAssetId = Object.keys(this.staged)
         .filter((id2) => this.isLowerLOD(id, id2))
@@ -196,9 +198,9 @@ export class Engine {
     return { id, asset: staged };
   }
 
-  loadAsset(id: AssetID, asset: Asset, lod: AssetLOD): LoadedAsset {
+  loadAsset(id: AssetID, asset: AssetDescriptor, lod: AssetLOD): Asset {
     switch (asset.tag) {
-      case "Ref":
+      case "AssetReference":
         const request = this.loading[id];
         if (request === undefined) {
           // Create a new request.
@@ -218,11 +220,11 @@ export class Engine {
             })
             .finally(() => {});
         }
-        return { tag: "Loading", id };
+        return { tag: "AssetLoading", id };
 
-      case "Mesh":
+      case "MeshDescriptor":
         return {
-          tag: "LoadedMesh",
+          tag: "Mesh",
           vertices: this.vertexBuffer.write(asset.vertices),
           indices: this.indexBuffer.write(asset.indices),
         };
@@ -267,15 +269,15 @@ export class Engine {
   }
 }
 
-export function getAssetID(asset: Asset, lod: AssetLOD): AssetID {
+export function getAssetID(asset: AssetDescriptor, lod: AssetLOD): AssetID {
   return `${getAssetIDBase(asset)}:${lod}`;
 }
 
-function getAssetIDBase(asset: Asset) {
+function getAssetIDBase(asset: AssetDescriptor) {
   switch (asset.tag) {
-    case "Ref":
+    case "AssetReference":
       return asset.filename;
-    case "Mesh":
+    case "MeshDescriptor":
       if (asset.id !== undefined) {
         return asset.id;
       }

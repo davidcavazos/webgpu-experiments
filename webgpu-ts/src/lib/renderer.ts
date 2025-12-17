@@ -1,12 +1,12 @@
 import { VertexBuffer } from "./assets/vertexBuffer";
 import {
   Engine,
-  type Asset,
+  type AssetDescriptor,
   type AssetID,
   type AssetLoader,
   type AssetLOD,
   type FilePattern,
-  type Mesh,
+  type MeshDescriptor,
 } from "./engine";
 import { mat4 } from "./mat4";
 import type { Scene } from "./scene";
@@ -104,6 +104,13 @@ export class Renderer {
       ],
     });
 
+    // TODO: vertex shader instancing
+    // - with 128 MiB storage buffer, that's ~2 M entities on mat4x4f transforms
+    // - if entities > entityBuffer, pre-cull by distance/size in CPU
+    // - QUESTION: how many BVHs can be stored?
+    //   - should maybe be a 64 KiB uniform?, set for every asset ID
+    //   - if it's by asset (not by entity), maybe a storage buffer?
+    //   - 1M max assets to support (including LODs)
     throw new Error("TODO: vertex shader instancing");
   }
 

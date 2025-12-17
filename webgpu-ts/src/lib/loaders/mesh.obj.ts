@@ -1,4 +1,9 @@
-import type { Asset, AssetID, AssetLOD, Mesh } from "../engine";
+import type {
+  AssetDescriptor,
+  AssetID,
+  AssetLOD,
+  MeshDescriptor,
+} from "../engine";
 import { toFixedLength } from "../stdlib";
 import { vec3 } from "../vec3";
 
@@ -12,7 +17,7 @@ export interface MeshObj {
 export async function loadObj(
   filename: string,
   lod: AssetLOD = 0,
-): Promise<Asset> {
+): Promise<AssetDescriptor> {
   if (lod !== 0) {
     return {
       tag: "AssetError",
@@ -44,7 +49,7 @@ export async function loadObj(
   }
 }
 
-export function parseObj(id: AssetID, contents: string): Mesh {
+export function parseObj(id: AssetID, contents: string): MeshDescriptor {
   // https://en.wikipedia.org/wiki/Wavefront_.obj_file
   const obj: MeshObj = { positions: [], uvs: [], normals: [], faces: [] };
   for (const line of contents.split("\n")) {
@@ -81,7 +86,7 @@ export function parseObj(id: AssetID, contents: string): Mesh {
   return objToMesh(id, obj);
 }
 
-export function objToMesh(id: AssetID, obj: MeshObj): Mesh {
+export function objToMesh(id: AssetID, obj: MeshObj): MeshDescriptor {
   // The same vertex position could have different uv or normals.
   // Each vertex is a unique combination of (vertex, uv, normal).
   const uniqueFaces = [...new Set(obj.faces.flat())].sort();
@@ -117,5 +122,5 @@ export function objToMesh(id: AssetID, obj: MeshObj): Mesh {
     ];
   });
   const indices = obj.faces.flat().map((face) => uniqueFaces.indexOf(face));
-  return { tag: "Mesh", id, vertices, indices };
+  return { tag: "MeshDescriptor", id, vertices, indices };
 }

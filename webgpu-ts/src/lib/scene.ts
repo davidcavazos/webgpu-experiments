@@ -1,17 +1,17 @@
-import type { Asset, AssetID } from "./engine";
+import type { AssetDescriptor, AssetID } from "./engine";
 import { mat4 } from "./mat4";
 
 export type EntityID = string;
 
 export type Entity = {
-  asset: Asset;
+  asset: AssetDescriptor;
   transform: Float32Array;
   // TODO: BVH
   entities: Record<EntityID, Entity>;
 };
 
 export function entity(args: {
-  asset: Asset;
+  asset: AssetDescriptor;
   transform?: Float32Array;
   entities?: Record<EntityID, Entity>;
 }): Entity {
@@ -28,7 +28,7 @@ export function ref(args: {
   entities?: Record<EntityID, Entity>;
 }): Entity {
   return entity({
-    asset: { tag: "Ref", filename: args.filename },
+    asset: { tag: "AssetReference", filename: args.filename },
     transform: args.transform,
     entities: args.entities,
   });
@@ -43,7 +43,7 @@ export function mesh(args: {
 }): Entity {
   return entity({
     asset: {
-      tag: "Mesh",
+      tag: "MeshDescriptor",
       id: args.id,
       vertices: args.vertices,
       indices: args.indices,
