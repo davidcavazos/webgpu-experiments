@@ -1,13 +1,5 @@
 import { VertexBuffer } from "./assets/vertexBuffer";
-import {
-  Engine,
-  type AssetDescriptor,
-  type AssetID,
-  type AssetLoader,
-  type AssetLOD,
-  type FilePattern,
-  type MeshDescriptor,
-} from "./engine";
+import { Engine, type AssetLoader, type FilePattern } from "./engine";
 import { mat4 } from "./mat4";
 import type { Scene } from "./scene";
 
@@ -103,15 +95,6 @@ export class Renderer {
         },
       ],
     });
-
-    // TODO: vertex shader instancing
-    // - with 128 MiB storage buffer, that's ~2 M entities on mat4x4f transforms
-    // - if entities > entityBuffer, pre-cull by distance/size in CPU
-    // - QUESTION: how many BVHs can be stored?
-    //   - should maybe be a 64 KiB uniform?, set for every asset ID
-    //   - if it's by asset (not by entity), maybe a storage buffer?
-    //   - 1M max assets to support (including LODs)
-    throw new Error("TODO: vertex shader instancing");
   }
 
   setProjection(width: number, height: number) {
@@ -128,11 +111,11 @@ export class Renderer {
 
   stageScene(now: number) {
     // TODO: pass the Scene and Camera directly
-    const entities = Object.values(this.scene).map((entity) => ({
+    const instances = Object.values(this.scene).map((entity) => ({
       entity,
       lod: 0,
     }));
-    return this.engine.stage(entities, now);
+    return this.engine.stage(instances, now);
   }
 
   draw(now: number) {
@@ -164,7 +147,7 @@ export class Renderer {
     for (const batch of Object.values(this.engine.passes.opaque)) {
       pass.setVertexBuffer(0, batch.vertices.buffer);
       pass.setIndexBuffer(batch.indices.buffer, batch.indices.format);
-      pass.drawIndexed(batch.indices.count);
+      pass.drawIndexed(batch.indices.count, batch.entities.count);
     }
 
     // drawOpaque(now: number, pass: GPURenderPassEncoder) {
@@ -222,9 +205,14 @@ const shaderSource = /* wgsl */ `
     @location(0) normal: vec3f,
   };
 
-  @vertex fn opaque_vertex(input: VertexInput) -> VertexOutput {
+  @vertex fn opaque_vertex(
+    // @builtin(vertex_index) vertexIndex : u32,
+    @builtin(instance_index) instance_id: u32,
+    input: VertexInput
+  ) -> VertexOutput {
+    var entity = entities[instance_id];
     var output: VertexOutput;
-    output.position = globals.viewProjection * entities[0].transform * vec4f(input.position, 1.0);
+    output.position = globals.viewProjection * entity.transform * vec4f(input.position, 1.0);
     output.normal = input.normal;
     return output;
   }

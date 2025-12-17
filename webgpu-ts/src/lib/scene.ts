@@ -6,7 +6,6 @@ export type EntityID = string;
 export type Entity = {
   asset: AssetDescriptor;
   transform: Float32Array;
-  // TODO: BVH
   entities: Record<EntityID, Entity>;
 };
 
@@ -36,8 +35,8 @@ export function ref(args: {
 
 export function mesh(args: {
   id?: AssetID;
-  vertices: number[][];
-  indices: number[];
+  vertices?: number[][];
+  indices?: number[];
   transform?: Float32Array;
   entities?: Record<EntityID, Entity>;
 }): Entity {
@@ -45,8 +44,8 @@ export function mesh(args: {
     asset: {
       tag: "MeshDescriptor",
       id: args.id,
-      vertices: args.vertices,
-      indices: args.indices,
+      vertices: args.vertices ?? [],
+      indices: args.indices ?? [],
     },
     transform: args.transform,
     entities: args.entities,

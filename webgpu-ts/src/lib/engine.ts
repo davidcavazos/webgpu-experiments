@@ -133,7 +133,6 @@ export class Engine {
           break;
       }
     }
-    this.entityBuffer.clear();
     this.passes = {
       opaque: Object.fromEntries(
         Object.entries(opaques).map(([id, { entities, asset }]) => {

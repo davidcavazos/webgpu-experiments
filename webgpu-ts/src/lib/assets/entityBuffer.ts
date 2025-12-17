@@ -1,8 +1,14 @@
 import type { Entity } from "../scene";
 import { toFixedLength } from "../stdlib";
-import { BufferBase, type BufferSlot } from "./bufferBase";
+import { BufferBase, type BufferSlot, type ChunkID } from "./bufferBase";
 
-export type EntityBufferSlot = BufferSlot;
+export type EntityBufferSlot = {
+  chunk: ChunkID;
+  buffer: GPUBuffer;
+  offset: number;
+  size: number;
+  count: number;
+};
 
 // export class EntityBuffer extends BufferBase {
 //   constructor(device: GPUDevice) {
@@ -24,12 +30,10 @@ export type EntityBufferSlot = BufferSlot;
 export class EntityBuffer {
   static readonly stride = 4 * 4 * Float32Array.BYTES_PER_ELEMENT;
   device: GPUDevice;
-  count: number;
   size: number;
   buffer: GPUBuffer;
   constructor(device: GPUDevice, size?: number) {
     this.device = device;
-    this.count = 0;
     this.size = size ?? device.limits.maxStorageBufferBindingSize;
     this.buffer = device.createBuffer({
       label: `EntityBuffer`,
@@ -38,12 +42,7 @@ export class EntityBuffer {
     });
   }
 
-  clear() {
-    this.count = 0;
-  }
-
   write(entities: Entity[]): EntityBufferSlot {
-    this.count = entities.length;
     const data = entities.flatMap((e) =>
       toFixedLength([...e.transform], 4 * 4, 0),
     );
@@ -51,7 +50,8 @@ export class EntityBuffer {
       chunk: 0,
       buffer: this.buffer,
       offset: 0,
-      size: this.count * EntityBuffer.stride,
+      size: entities.length * EntityBuffer.stride,
+      count: entities.length,
     };
     this.device.queue.writeBuffer(
       this.buffer,

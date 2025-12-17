@@ -265,7 +265,7 @@ export const mat4 = {
     return mat4.multiply(m, mat4.rotationZ(angleInRadians), dst);
   },
 
-  scale(m, scale, dst) {
+  scale(m, scale, dst?: Float32Array) {
     return mat4.multiply(m, mat4.scaling(scale), dst);
   },
 };

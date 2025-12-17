@@ -45,17 +45,6 @@ start(canvas, async (device: GPUDevice) => {
     alphaMode: "premultiplied",
   });
 
-  const triangle = mesh({
-    id: "triangle-mesh",
-    vertices: [
-      [0, 0, 0],
-      [1, 0, 0],
-      [0, 1, 0],
-    ],
-    indices: [0, 1, 2],
-    transform: mat4.translate(mat4.identity(), [0, 0, -4]),
-  });
-
   const renderer = new Renderer({
     device,
     canvas,
@@ -71,16 +60,13 @@ start(canvas, async (device: GPUDevice) => {
         indices: [0, 1, 2],
         transform: mat4.translate(mat4.identity(), [0, 0, -4]),
       }),
-      // triangle2: mesh({
-      //   id: "triangle-mesh",
-      //   vertices: [
-      //     [0, 0, 0],
-      //     [1, 0, 0],
-      //     [0, 1, 0],
-      //   ],
-      //   indices: [0, 1, 2],
-      //   transform: mat4.translate(mat4.identity(), [5, 0, -4]),
-      // }),
+      triangle2: mesh({
+        id: "triangle-mesh",
+        transform: mat4.scale(
+          mat4.translate(mat4.identity(), [-0.5, -1, -4]),
+          [0.5, 0.5, 0.5],
+        ),
+      }),
       // pyramid1: ref({ filename: "assets/pyramid.obj" }),
     },
   });
