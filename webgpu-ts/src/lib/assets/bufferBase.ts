@@ -94,9 +94,9 @@ export class BufferBase {
       size: this.chunkSize - size,
     });
     this.chunks.push(buffer);
-    console.log(
-      `[${this.label}] allocated new chunk (chunks=${this.chunks.length})`,
-    );
+    // console.log(
+    //   `[${this.label}] allocated new chunk (chunks=${this.chunks.length})`,
+    // );
     return { chunk, buffer, offset: 0, size };
   }
 

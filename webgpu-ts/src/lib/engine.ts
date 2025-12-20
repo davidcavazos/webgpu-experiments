@@ -113,9 +113,9 @@ export class Engine {
     this.vertexBuffer = new VertexBuffer(device);
     this.indexBuffer = new IndexBuffer(device);
 
-    for (const pattern of Object.keys(this.loaders)) {
-      console.log(`[AssetLibrary] using loader: ${pattern}`);
-    }
+    // for (const pattern of Object.keys(this.loaders)) {
+    //   console.log(`[AssetLibrary] using loader: ${pattern}`);
+    // }
   }
 
   stage(scene: { entity: Entity; lod: AssetLOD }[], now: number) {

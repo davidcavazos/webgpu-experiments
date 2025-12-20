@@ -54,12 +54,37 @@ export class Renderer {
         },
       ],
     });
+
+    // TODO: move this into some async loadShaders function.
+    const shaderModule = this.device.createShaderModule({ code: shaderSource });
+    // const compilationInfo = await shaderModule.getCompilationInfo();
+    // if (compilationInfo.messages.length > 0) {
+    //   console.log("Shader Compilation Messages:");
+    //   for (const message of compilationInfo.messages) {
+    //     const logFn =
+    //       message.type === "error"
+    //         ? console.error
+    //         : message.type === "warning"
+    //           ? console.warn
+    //           : console.info;
+    //     logFn(
+    //       `[${message.type}] Line ${message.lineNum}:${message.columnNum} - ${message.message}`,
+    //     );
+    //   }
+    // }
+    // const hadErrors = compilationInfo.messages.some(
+    //   (msg) => msg.type === "error",
+    // );
+    // if (hadErrors) {
+    //   throw new Error("Shader compilation failed with errors.");
+    // }
+
     this.pipeline = this.device.createRenderPipeline({
       layout: this.device.createPipelineLayout({
         bindGroupLayouts: [bindGroupLayout],
       }),
       vertex: {
-        module: this.device.createShaderModule({ code: shaderSource }),
+        module: shaderModule,
         entryPoint: "opaque_vertex",
         buffers: [VertexBuffer.layout],
       },
