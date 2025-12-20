@@ -1,3 +1,4 @@
+import * as io from "./lib/io";
 import * as library from "./lib/engine";
 import { loadObj } from "./lib/loaders/mesh.obj";
 import { mat4 } from "./lib/mat4";
@@ -45,6 +46,8 @@ start(canvas, async (device: GPUDevice) => {
     alphaMode: "premultiplied",
   });
 
+  const mouse = new io.Mouse(canvas);
+
   const renderer = new Renderer({
     device,
     canvas,
@@ -75,6 +78,13 @@ start(canvas, async (device: GPUDevice) => {
   function render(now: number) {
     const startTime = performance.now();
 
+    const inputs = {
+      mouse: mouse.poll(),
+    };
+    if (inputs.mouse.moved && inputs.mouse.pressedLeft) {
+      console.log(inputs.mouse.position);
+    }
+
     // Stage and draw the scene.
     renderer.draw(now);
 
@@ -88,7 +98,7 @@ start(canvas, async (device: GPUDevice) => {
       ].join("\n");
     }
     lastRenderTime = now;
-    // requestAnimationFrame(render);
+    requestAnimationFrame(render);
   }
 
   requestAnimationFrame(render);
