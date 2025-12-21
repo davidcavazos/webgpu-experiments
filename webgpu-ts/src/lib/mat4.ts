@@ -4,7 +4,13 @@ export const mat4 = {
     return mat4.ortho(0, width, height, 0, depth, -depth, dst);
   },
 
-  perspective(fieldOfViewYInRadians, aspect, zNear, zFar, dst) {
+  perspective(
+    fieldOfViewYInRadians,
+    aspect,
+    zNear,
+    zFar,
+    dst?: Float32Array,
+  ): Float32Array<ArrayBuffer> {
     dst = dst || new Float32Array(16);
 
     const f = Math.tan(Math.PI * 0.5 - 0.5 * fieldOfViewYInRadians);

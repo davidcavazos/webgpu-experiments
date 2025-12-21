@@ -3,7 +3,8 @@ import { EntityBuffer, type EntityBufferSlot } from "./assets/entityBuffer";
 import { IndexBuffer, type IndexBufferSlot } from "./assets/indexBuffer";
 import { VertexBuffer, type VertexBufferSlot } from "./assets/vertexBuffer";
 import { loadObj } from "./loaders/mesh.obj";
-import type { Entity, EntityID } from "./scene";
+import { mat4 } from "./mat4";
+import type { Entity, EntityID, Scene } from "./scene";
 import { parseInt, stringHash } from "./stdlib";
 
 // As a proof of concept, this only supports loading, not unloading.
@@ -82,46 +83,272 @@ export interface BatchDraw {
   indices: IndexBufferSlot;
 }
 
-// TODO: make the engine API-agnostic
-// - remove all mentions of WebGPU, use wrappers instead
-// - include an interface for an API implementation (eg. WebGPU, Vulkan)
-export class Engine {
+export interface State<a> {
+  scene: Scene;
+  app: a;
+}
+
+export async function start<a>(args: {
+  canvas: HTMLCanvasElement;
+  init: (engine: Engine<a>) => Promise<State<a>>;
+  update?: (state: State<a>, now: number) => State<a>;
+  updateAfterDraw?: (state: State<a>, now: number) => State<a>;
+}) {
+  // Get the GPU device
+  if (!navigator.gpu) {
+    window.alert("this browser does not support WebGPU");
+    return;
+  }
+  const adapter = await navigator.gpu.requestAdapter();
+  if (!adapter) {
+    window.alert("this browser supports webgpu but it appears disabled");
+    return;
+  }
+  const device = await adapter.requestDevice();
+  device.lost.then((info) => {
+    window.alert(`WebGPU device was lost: ${info.message}`);
+    if (info.reason !== "destroyed") {
+      start(args);
+    }
+  });
+
+  const context = args.canvas.getContext("webgpu");
+  if (!context) {
+    throw Error("Could not get a WebGPU context.");
+  }
+  context.configure({
+    device,
+    format: navigator.gpu.getPreferredCanvasFormat(),
+    alphaMode: "premultiplied",
+  });
+
+  console.log(device);
+  const engine = new Engine({ device, canvas: args.canvas, context });
+
+  let state = await args.init(engine);
+  const update = args.update ?? ((s, _) => s);
+  const updateAfterDraw = args.updateAfterDraw ?? ((s, _) => s);
+  function render(now: number) {
+    state = update(state, now);
+    engine.draw(state.scene, now);
+    state = updateAfterDraw(state, now);
+    requestAnimationFrame(render);
+  }
+  requestAnimationFrame(render);
+
+  // Handle window resize.
+  // https://webgpufundamentals.org/webgpu/lessons/webgpu-resizing-the-canvas.html
+  const observer = new ResizeObserver((entries) => {
+    for (const entry of entries) {
+      const width =
+        entry.devicePixelContentBoxSize?.[0]?.inlineSize ||
+        (entry.contentBoxSize[0]?.inlineSize || args.canvas.width) *
+          devicePixelRatio;
+      const height =
+        entry.devicePixelContentBoxSize?.[0]?.blockSize ||
+        (entry.contentBoxSize[0]?.blockSize || args.canvas.height) *
+          devicePixelRatio;
+      //   const canvas: HTMLCanvasElement = entry.target;
+      args.canvas.width = Math.max(
+        1,
+        Math.min(width, device.limits.maxTextureDimension2D),
+      );
+      args.canvas.height = Math.max(
+        1,
+        Math.min(height, device.limits.maxTextureDimension2D),
+      );
+      requestAnimationFrame(render);
+    }
+  });
+  try {
+    observer.observe(args.canvas, { box: "device-pixel-content-box" });
+  } catch {
+    observer.observe(args.canvas, { box: "content-box" });
+  }
+}
+
+export class Engine<a> {
+  readonly device: GPUDevice;
+  readonly canvas: HTMLCanvasElement;
+  readonly context: GPUCanvasContext;
   readonly loaders: Record<FilePattern, AssetLoader>;
   staged: Record<AssetID, Asset>;
   loading: Record<RequestID, Promise<AssetDescriptor>>;
   passes: {
     opaque: Record<AssetID, BatchDraw>;
   };
+  shaderModule: GPUShaderModule;
+  globalsBuffer: GPUBuffer;
   entityBuffer: EntityBuffer;
   vertexBuffer: VertexBuffer;
   indexBuffer: IndexBuffer;
-
-  // TODO: Least Recently Used (LRU) list
-  // TODO: configure chunkSize
-  // TODO: configure maxChunks
-  constructor(device: GPUDevice, loaders?: Record<AssetID, AssetLoader>) {
+  pipeline: GPURenderPipeline;
+  bindGroup: GPUBindGroup;
+  constructor(args: {
+    device: GPUDevice;
+    canvas: HTMLCanvasElement;
+    context: GPUCanvasContext;
+    loaders?: Record<AssetID, AssetLoader>;
+    shaders?: string;
+  }) {
+    this.device = args.device;
+    this.canvas = args.canvas;
+    this.context = args.context;
     this.loaders = {
-      ...loaders,
+      ...args.loaders,
       "*.obj": loadObj,
     };
+
     this.staged = {};
     this.loading = {};
     this.passes = {
       opaque: {},
     };
-    this.entityBuffer = new EntityBuffer(device);
-    this.vertexBuffer = new VertexBuffer(device);
-    this.indexBuffer = new IndexBuffer(device);
+    this.shaderModule = this.device.createShaderModule({
+      code: args.shaders ?? defaultShaders,
+    });
 
-    // for (const pattern of Object.keys(this.loaders)) {
-    //   console.log(`[AssetLibrary] using loader: ${pattern}`);
-    // }
+    const presentationFormat = navigator.gpu.getPreferredCanvasFormat();
+    this.globalsBuffer = this.device.createBuffer({
+      size: 4 * 4 * Float32Array.BYTES_PER_ELEMENT,
+      usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
+    });
+    this.entityBuffer = new EntityBuffer(this.device);
+    this.vertexBuffer = new VertexBuffer(this.device);
+    this.indexBuffer = new IndexBuffer(this.device);
+
+    const bindGroupLayout = this.device.createBindGroupLayout({
+      entries: [
+        {
+          binding: 0,
+          visibility: GPUShaderStage.VERTEX,
+          buffer: { type: "uniform" },
+        },
+        {
+          binding: 1,
+          visibility: GPUShaderStage.VERTEX,
+          buffer: { type: "read-only-storage" },
+        },
+      ],
+    });
+
+    this.pipeline = this.device.createRenderPipeline({
+      layout: this.device.createPipelineLayout({
+        bindGroupLayouts: [bindGroupLayout],
+      }),
+      vertex: {
+        module: this.shaderModule,
+        entryPoint: "opaque_vertex",
+        buffers: [VertexBuffer.layout],
+      },
+      fragment: {
+        module: this.shaderModule,
+        entryPoint: "opaque_pixel",
+        targets: [{ format: presentationFormat }],
+      },
+      primitive: {
+        topology: "triangle-list",
+        cullMode: "back",
+      },
+      // depthStencil: {
+      //   depthWriteEnabled: true,
+      //   depthCompare: "less",
+      //   format: "depth24plus",
+      // },
+    });
+
+    this.bindGroup = this.device.createBindGroup({
+      layout: this.pipeline.getBindGroupLayout(0),
+      entries: [
+        {
+          binding: 0,
+          resource: { buffer: this.globalsBuffer },
+        },
+        {
+          binding: 1,
+          resource: { buffer: this.entityBuffer.buffer },
+        },
+      ],
+    });
   }
 
-  stage(scene: { entity: Entity; lod: AssetLOD }[], now: number) {
+  async shaderCompilationMessages(): Promise<{
+    info: string[];
+    warnings: string[];
+    errors: string[];
+  }> {
+    const compilationInfo = await this.shaderModule.getCompilationInfo();
+    let info: string[] = [];
+    let warnings: string[] = [];
+    let errors: string[] = [];
+    if (compilationInfo.messages.length > 0) {
+      console.log("Shader Compilation Messages:");
+      for (const msg of compilationInfo.messages) {
+        const message = `${msg.lineNum}:${msg.linePos}: ${msg.message}`;
+        switch (msg.type) {
+          case "info":
+            info.push(message);
+            break;
+          case "warning":
+            warnings.push(message);
+            break;
+          case "error":
+            errors.push(message);
+            break;
+        }
+      }
+    }
+    return { info, warnings, errors };
+  }
+
+  draw(scene: Scene, now: number) {
+    // TODO: calculate this from scene-cameras.
+    const fieldOfView = 100;
+    const aspect = this.canvas.width / this.canvas.height;
+    const zNear = 1;
+    const zFar = 2000;
+    const viewProjection = mat4.perspective(fieldOfView, aspect, zNear, zFar);
+
+    this.stage(scene, now);
+    this.device.queue.writeBuffer(this.globalsBuffer, 0, viewProjection);
+
+    const encoder = this.device.createCommandEncoder();
+    const pass = encoder.beginRenderPass({
+      colorAttachments: [
+        {
+          view: this.context.getCurrentTexture().createView(),
+          loadOp: "clear",
+          storeOp: "store",
+          clearValue: { r: 0, g: 0, b: 0, a: 1 },
+        },
+      ],
+      // depthStencilAttachment: {
+      //   view: depthTexture.createView(),
+      //   depthClearValue: 1.0,
+      //   depthLoadOp: "clear",
+      //   depthStoreOp: "store",
+      // },
+    });
+
+    pass.setPipeline(this.pipeline);
+    pass.setBindGroup(0, this.bindGroup);
+    for (const batch of Object.values(this.passes.opaque)) {
+      pass.setVertexBuffer(0, batch.vertices.buffer);
+      pass.setIndexBuffer(batch.indices.buffer, batch.indices.format);
+      pass.drawIndexed(batch.indices.count, batch.entities.count);
+    }
+    pass.end();
+    this.device.queue.submit([encoder.finish()]);
+  }
+
+  stage(scene: Scene, now: number) {
     // TODO: keep track on LRU of when an asset was used with `now`
+    const instances = Object.values(scene).map((entity) => ({
+      entity,
+      lod: 0,
+    }));
     let opaques: Record<AssetID, { entities: Entity[]; asset: Mesh }> = {};
-    for (const { entity, lod } of scene) {
+    for (const { entity, lod } of instances) {
       const { id, asset } = this.request(entity.asset, lod);
       switch (asset.tag) {
         case "Mesh":
@@ -145,32 +372,6 @@ export class Engine {
         }),
       ),
     };
-    // scene.map(async ({ id, entity, lod }) => {
-    //   const staged = this.request(entity.asset, lod);
-    //   const slot = this.entities.write(entity);
-    //   if (!(staged.id in this.passes.opaque)) {
-    //     this.passes.opaque[staged.id] = [];
-    //   }
-    //   this.passes.opaque[staged.id]?.push({
-    //     id,
-    //     entity: slot,
-    //   });
-    // });
-  }
-
-  isLoading(): boolean {
-    return Object.keys(this.loading).length > 0;
-  }
-
-  splitAssetID(id: AssetID): { base: string; lod: AssetLOD } {
-    const [base, lod] = id.split(":", 2);
-    return { base: base ?? "", lod: parseInt(lod ?? "0") };
-  }
-
-  isLowerLOD(id1: AssetID, id2: AssetID): boolean {
-    const x = this.splitAssetID(id1);
-    const y = this.splitAssetID(id2);
-    return x.base === y.base && x.lod < y.lod;
   }
 
   request(
@@ -186,7 +387,7 @@ export class Engine {
     if (staged.tag === "AssetLoading") {
       // Still loading, try to find a lower LOD.
       const lowerAssetId = Object.keys(this.staged)
-        .filter((id2) => this.isLowerLOD(id, id2))
+        .filter((id2) => isLowerLOD(id, id2))
         .sort()[0];
       if (lowerAssetId !== undefined) {
         return { id, asset: this.staged[lowerAssetId]! };
@@ -272,6 +473,17 @@ export function getAssetID(asset: AssetDescriptor, lod: AssetLOD): AssetID {
   return `${getAssetIDBase(asset)}:${lod}`;
 }
 
+function splitAssetID(id: AssetID): { base: string; lod: AssetLOD } {
+  const [base, lod] = id.split(":", 2);
+  return { base: base ?? "", lod: parseInt(lod ?? "0") };
+}
+
+function isLowerLOD(id1: AssetID, id2: AssetID): boolean {
+  const x = splitAssetID(id1);
+  const y = splitAssetID(id2);
+  return x.base === y.base && x.lod < y.lod;
+}
+
 function getAssetIDBase(asset: AssetDescriptor) {
   switch (asset.tag) {
     case "AssetReference":
@@ -286,3 +498,44 @@ function getAssetIDBase(asset: AssetDescriptor) {
       return `AssetError<${asset.id}:${asset.lod}>`;
   }
 }
+
+const defaultShaders = /* wgsl */ `
+  struct Globals {
+    viewProjection: mat4x4f,
+  };
+  @group(0) @binding(0) var<uniform> globals: Globals;
+
+  struct Entity {
+    transform: mat4x4f,
+  };
+  @group(0) @binding(1) var<storage, read> entities: array<Entity, 100>;
+
+  struct VertexInput {
+    @location(0) position: vec3f,
+    @location(1) normal: vec3f,
+    @location(2) uv: vec2f,
+  };
+
+  struct VertexOutput {
+    @builtin(position) position: vec4f,
+    @location(0) normal: vec3f,
+  };
+
+  @vertex fn opaque_vertex(
+    // @builtin(vertex_index) vertexIndex : u32,
+    @builtin(instance_index) instance_id: u32,
+    input: VertexInput
+  ) -> VertexOutput {
+    var entity = entities[instance_id];
+    var output: VertexOutput;
+    output.position = globals.viewProjection * entity.transform * vec4f(input.position, 1.0);
+    output.normal = input.normal;
+    return output;
+  }
+
+  @fragment fn opaque_pixel(input: VertexOutput) -> @location(0) vec4f {
+    // return globals.color;
+    // return vec4f(1, 1, 1, 1);
+    return vec4f(input.normal * 0.5 + 0.5, 1);
+  }
+`;
