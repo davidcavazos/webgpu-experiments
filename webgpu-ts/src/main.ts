@@ -9,9 +9,11 @@ import { mat4 } from "./lib/mat4";
 import { mesh } from "./lib/scene";
 
 const canvas: HTMLCanvasElement = document.querySelector("#canvas")!;
+
 interface App {
   input: {
     mouse: io.Mouse;
+    keyboard: io.Keyboard;
   };
   metrics: {
     infoHtmlElement: Element;
@@ -71,6 +73,7 @@ async function init(engine: Engine): Promise<StateInit<App>> {
     app: {
       input: {
         mouse: new io.Mouse(canvas),
+        keyboard: new io.Keyboard(canvas),
       },
       metrics: {
         infoHtmlElement: document.querySelector("#info")!,
@@ -87,6 +90,11 @@ function update(state: State<App>): State<App> {
   const input = state.app.input;
   const mouse = input.mouse.poll();
   if (mouse.scroll) {
+    // scroll -> orbit camera
+    // Shift + scroll -> pan camera
+    // Alt + scroll -> rotate camera
+    // Ctrl + scroll -> zoom camera
+    // Meta + scroll -> zoom camera
     console.log(mouse.scroll.x, mouse.scroll.y);
   }
 
