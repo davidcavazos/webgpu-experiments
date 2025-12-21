@@ -1,4 +1,9 @@
-import { Engine, start, type State } from "./lib/engine";
+import {
+  Engine,
+  start,
+  type InitState as StateInit,
+  type State,
+} from "./lib/engine";
 import * as io from "./lib/io";
 import { mat4 } from "./lib/mat4";
 import { mesh } from "./lib/scene";
@@ -10,12 +15,12 @@ interface App {
   };
   metrics: {
     infoHtmlElement: Element;
-    lastNow: number;
-    startTime: number;
+    drawStartTime: number;
+    updateElapsed: number;
   };
 }
 
-async function init(engine: Engine<App>): Promise<State<App>> {
+async function init(engine: Engine): Promise<StateInit<App>> {
   // Check for shader compilation errors.
   const messages = await engine.shaderCompilationMessages();
   if (messages.info.length > 0) {
@@ -69,36 +74,44 @@ async function init(engine: Engine<App>): Promise<State<App>> {
       },
       metrics: {
         infoHtmlElement: document.querySelector("#info")!,
-        lastNow: 0,
-        startTime: 0,
+        drawStartTime: 0,
+        updateElapsed: 0,
       },
     },
   };
 }
 
-function update(state: State<App>, now: number): State<App> {
-  state.app.metrics.startTime = performance.now();
+function update(state: State<App>): State<App> {
+  const updateStart = performance.now();
 
   const input = state.app.input;
   const mouse = input.mouse.poll();
   if (mouse.scroll) {
     console.log(mouse.scroll.x, mouse.scroll.y);
   }
+
+  // Get metrics.
+  const updateEnd = performance.now();
+  state.app.metrics.drawStartTime = updateEnd;
+  state.app.metrics.updateElapsed = updateEnd - updateStart;
   return state;
 }
 
-function updateAfterDraw(state: State<App>, now: number): State<App> {
+function updateAfterDraw(state: State<App>): State<App> {
   // Display performance metrics.
-  const metrics = state.app.metrics;
-  if (Math.floor(now * 0.02) !== Math.floor(metrics.lastNow * 0.02)) {
-    const elapsed = performance.now() - metrics.startTime;
-    const fps = 1000 / (now - metrics.lastNow);
+  if (state.frameNumber % 10 === 0) {
+    const metrics = state.app.metrics;
+    const fps = 1 / state.deltaTime;
+    const updateElapsed = metrics.updateElapsed;
+    const drawElapsed = performance.now() - metrics.drawStartTime;
+    const totalElapsed = updateElapsed + drawElapsed;
     metrics.infoHtmlElement.textContent = [
-      `fps:  ${fps.toFixed(1)}`,
-      `time: ${elapsed.toFixed(1)} ms`,
+      `fps:    ${fps.toFixed(1)}`,
+      `update: ${updateElapsed.toFixed(1)} ms`,
+      `draw:   ${drawElapsed.toFixed(1)} ms`,
+      `total:  ${totalElapsed.toFixed(1)} ms`,
     ].join("\n");
   }
-  state.app.metrics.lastNow = now;
   return state;
 }
 

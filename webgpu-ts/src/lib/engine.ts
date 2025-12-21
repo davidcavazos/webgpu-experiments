@@ -83,16 +83,24 @@ export interface BatchDraw {
   indices: IndexBufferSlot;
 }
 
+export interface InitState<a> {
+  scene: Scene;
+  app: a;
+}
+
 export interface State<a> {
+  readonly frameNumber: number;
+  readonly deltaTime: number;
+  readonly now: number;
   scene: Scene;
   app: a;
 }
 
 export async function start<a>(args: {
   canvas: HTMLCanvasElement;
-  init: (engine: Engine<a>) => Promise<State<a>>;
-  update?: (state: State<a>, now: number) => State<a>;
-  updateAfterDraw?: (state: State<a>, now: number) => State<a>;
+  init: (engine: Engine) => Promise<{ scene: Scene; app: a }>;
+  update?: (state: State<a>) => State<a>;
+  updateAfterDraw?: (state: State<a>) => State<a>;
 }) {
   // Get the GPU device
   if (!navigator.gpu) {
@@ -125,13 +133,29 @@ export async function start<a>(args: {
   console.log(device);
   const engine = new Engine({ device, canvas: args.canvas, context });
 
-  let state = await args.init(engine);
-  const update = args.update ?? ((s, _) => s);
-  const updateAfterDraw = args.updateAfterDraw ?? ((s, _) => s);
+  const initialState = await args.init(engine);
+  let state: State<a> = {
+    ...initialState,
+    frameNumber: 0,
+    deltaTime: 0,
+    now: performance.now(),
+  };
+  const update = args.update ?? ((s) => s);
+  const updateAfterDraw = args.updateAfterDraw ?? ((s) => s);
   function render(now: number) {
-    state = update(state, now);
+    if (now === state.now) {
+      return;
+    }
+    state = {
+      ...state,
+      deltaTime: (now - state.now) * 0.001,
+      now: now,
+      frameNumber: state.frameNumber + 1,
+    };
+
+    state = update(state);
     engine.draw(state.scene, now);
-    state = updateAfterDraw(state, now);
+    state = updateAfterDraw(state);
     requestAnimationFrame(render);
   }
   requestAnimationFrame(render);
@@ -167,7 +191,7 @@ export async function start<a>(args: {
   }
 }
 
-export class Engine<a> {
+export class Engine {
   readonly device: GPUDevice;
   readonly canvas: HTMLCanvasElement;
   readonly context: GPUCanvasContext;
