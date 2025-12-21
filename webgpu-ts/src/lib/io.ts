@@ -10,7 +10,7 @@ export interface Coord2D {
   y: number;
 }
 
-export interface WheelScroll {
+export interface MouseScroll {
   x: number;
   y: number;
   z: number;
@@ -18,20 +18,19 @@ export interface WheelScroll {
 
 export interface MouseState {
   position: Coord2D;
-  wheelScroll: WheelScroll;
+  scroll: MouseScroll | undefined;
   moved: boolean;
   clickedLeft: boolean;
   pressedLeft: boolean;
-  wheelScrolled: boolean;
 }
+
 function mouseStateClean(): MouseState {
   return {
     position: { x: 0, y: 0 },
-    wheelScroll: { x: 0, y: 0, z: 0 },
+    scroll: undefined,
     moved: false,
     clickedLeft: false,
     pressedLeft: false,
-    wheelScrolled: false,
   };
 }
 
@@ -63,11 +62,11 @@ export class Mouse {
       }
     });
     elem.addEventListener("wheel", (event: WheelEvent) => {
-      this.state.wheelScrolled = true;
-      this.state.wheelScroll = {
-        x: this.state.wheelScroll.x + event.deltaX,
-        y: this.state.wheelScroll.y + event.deltaY,
-        z: this.state.wheelScroll.z + event.deltaZ,
+      const current = this.state.scroll ?? { x: 0, y: 0, z: 0 };
+      this.state.scroll = {
+        x: current.x + event.deltaX,
+        y: current.y + event.deltaY,
+        z: current.z + event.deltaZ,
       };
     });
   }
