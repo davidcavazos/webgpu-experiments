@@ -6,7 +6,7 @@ import {
 } from "./lib/engine";
 import * as io from "./lib/io";
 import { mat4 } from "./lib/mat4";
-import { mesh } from "./lib/scene";
+import { camera, mesh } from "./lib/scene";
 
 const canvas: HTMLCanvasElement = document.querySelector("#canvas")!;
 
@@ -47,6 +47,14 @@ async function init(engine: Engine): Promise<StateInit<App>> {
 
   // Build/load the initial scene.
   const scene = {
+    mycamera: camera({
+      projection: mat4.perspective(
+        engine.canvas.width,
+        engine.canvas.height,
+        1,
+        2000,
+      ),
+    }),
     triangle1: mesh({
       id: "triangle-mesh",
       vertices: [
@@ -95,7 +103,6 @@ function update(state: State<App>): State<App> {
     // Alt + scroll -> rotate camera
     // Ctrl + scroll -> zoom camera
     // Meta + scroll -> zoom camera
-    console.log(mouse.scroll.x, mouse.scroll.y);
   }
 
   // Get metrics.

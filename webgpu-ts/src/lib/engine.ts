@@ -1,4 +1,5 @@
 import type { BufferSlot } from "./assets/bufferBase";
+import { CameraBuffer, type CameraBufferSlot } from "./assets/cameraBuffer";
 import { EntityBuffer, type EntityBufferSlot } from "./assets/entityBuffer";
 import { IndexBuffer, type IndexBufferSlot } from "./assets/indexBuffer";
 import { VertexBuffer, type VertexBufferSlot } from "./assets/vertexBuffer";
@@ -64,7 +65,15 @@ export type MeshDescriptor = {
   vertices: number[][];
   indices: number[]; // TODO: faces: number[][]
 };
-export type AssetDescriptor = AssetReference | MeshDescriptor | AssetError;
+export type CameraDescriptor = {
+  tag: "CameraDescriptor";
+  projection: Float32Array;
+};
+export type AssetDescriptor =
+  | AssetReference
+  | MeshDescriptor
+  | CameraDescriptor
+  | AssetError;
 
 export type AssetLoading = {
   tag: "AssetLoading";
@@ -75,7 +84,11 @@ export type Mesh = {
   vertices: VertexBufferSlot;
   indices: IndexBufferSlot;
 };
-export type Asset = AssetLoading | Mesh | AssetError;
+export type Camera = {
+  tag: "Camera";
+  viewProjection: CameraBufferSlot;
+};
+export type Asset = AssetLoading | Mesh | Camera | AssetError;
 
 export interface BatchDraw {
   entities: EntityBufferSlot;
@@ -101,6 +114,7 @@ export async function start<a>(args: {
   init: (engine: Engine) => Promise<{ scene: Scene; app: a }>;
   update?: (state: State<a>) => State<a>;
   updateAfterDraw?: (state: State<a>) => State<a>;
+  camera?: EntityID;
 }) {
   // Get the GPU device
   if (!navigator.gpu) {
@@ -140,8 +154,6 @@ export async function start<a>(args: {
     deltaTime: 0,
     now: performance.now(),
   };
-  const update = args.update ?? ((s) => s);
-  const updateAfterDraw = args.updateAfterDraw ?? ((s) => s);
   function render(now: number) {
     if (now === state.now) {
       return;
@@ -153,9 +165,13 @@ export async function start<a>(args: {
       frameNumber: state.frameNumber + 1,
     };
 
-    state = update(state);
+    if (args.update) {
+      state = args.update(state);
+    }
     engine.draw(state.scene, now);
-    state = updateAfterDraw(state);
+    if (args.updateAfterDraw) {
+      state = args.updateAfterDraw(state);
+    }
     requestAnimationFrame(render);
   }
   requestAnimationFrame(render);
@@ -203,6 +219,7 @@ export class Engine {
   };
   shaderModule: GPUShaderModule;
   globalsBuffer: GPUBuffer;
+  cameraBuffer: CameraBuffer;
   entityBuffer: EntityBuffer;
   vertexBuffer: VertexBuffer;
   indexBuffer: IndexBuffer;
@@ -237,6 +254,7 @@ export class Engine {
       size: 4 * 4 * Float32Array.BYTES_PER_ELEMENT,
       usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
     });
+    this.cameraBuffer = new CameraBuffer(this.device);
     this.entityBuffer = new EntityBuffer(this.device);
     this.vertexBuffer = new VertexBuffer(this.device);
     this.indexBuffer = new IndexBuffer(this.device);
@@ -250,6 +268,11 @@ export class Engine {
         },
         {
           binding: 1,
+          visibility: GPUShaderStage.VERTEX,
+          buffer: { type: "uniform" },
+        },
+        {
+          binding: 2,
           visibility: GPUShaderStage.VERTEX,
           buffer: { type: "read-only-storage" },
         },
@@ -290,6 +313,10 @@ export class Engine {
         },
         {
           binding: 1,
+          resource: { buffer: this.cameraBuffer.buffer },
+        },
+        {
+          binding: 2,
           resource: { buffer: this.entityBuffer.buffer },
         },
       ],
@@ -453,8 +480,19 @@ export class Engine {
           indices: this.indexBuffer.write(asset.indices),
         };
 
+      case "CameraDescriptor":
+        return {
+          tag: "Camera",
+          viewProjection: this.cameraBuffer.write(asset.projection),
+        };
+
       case "AssetError":
         return asset;
+
+      default:
+        throw new Error(
+          `Engine.loadAsset: not implemented: ${(asset as Asset).tag}`,
+        );
     }
   }
 
@@ -512,27 +550,42 @@ function getAssetIDBase(asset: AssetDescriptor) {
   switch (asset.tag) {
     case "AssetReference":
       return asset.filename;
-    case "MeshDescriptor":
+    case "MeshDescriptor": {
       if (asset.id !== undefined) {
         return asset.id;
       }
       const hash = stringHash(JSON.stringify([asset.vertices, asset.indices]));
       return `Mesh<${hash}>`;
+    }
     case "AssetError":
       return `AssetError<${asset.id}:${asset.lod}>`;
+    case "CameraDescriptor": {
+      const hash = JSON.stringify([...asset.projection]);
+      return `Camera<${hash}>`;
+    }
+    default:
+      throw new Error(
+        `engine.getAssetIDBase: not implemented ${(asset as AssetDescriptor).tag}`,
+      );
   }
 }
 
+// TODO: make this a function to get max counts for Camera and Entity
 const defaultShaders = /* wgsl */ `
   struct Globals {
     viewProjection: mat4x4f,
   };
   @group(0) @binding(0) var<uniform> globals: Globals;
 
+  struct Camera {
+    viewProjection: mat4x4f,
+  };
+  @group(0) @binding(1) var<uniform> cameras: array<Camera, 100>;
+
   struct Entity {
     transform: mat4x4f,
   };
-  @group(0) @binding(1) var<storage, read> entities: array<Entity, 100>;
+  @group(0) @binding(2) var<storage, read> entities: array<Entity, 100>;
 
   struct VertexInput {
     @location(0) position: vec3f,

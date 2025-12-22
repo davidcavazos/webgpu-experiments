@@ -7,8 +7,9 @@ export class VertexBuffer extends BufferBase {
   // Typical GPU cache line size is 128 bytes or 64 bytes.
   // Stride: (position: vec3f, normal: vec3f, uv: vec2f)
   //   (3+3+2)=8 float32 = 32 bytes, aligns well with cache line.
+  static readonly stride = 3 + 3 + 2;
   static readonly layout: GPUVertexBufferLayout = {
-    arrayStride: (3 + 3 + 2) * Float32Array.BYTES_PER_ELEMENT,
+    arrayStride: VertexBuffer.stride * Float32Array.BYTES_PER_ELEMENT,
     attributes: [
       {
         // Position
@@ -40,7 +41,9 @@ export class VertexBuffer extends BufferBase {
   }
 
   write(vertices: number[][]): VertexBufferSlot {
-    const data = vertices.map((v) => toFixedLength(v, 3 + 3 + 2, 0)).flat();
+    const data = vertices
+      .map((v) => toFixedLength(v, VertexBuffer.stride, 0))
+      .flat();
     return this.writeFloat32(data);
   }
 }

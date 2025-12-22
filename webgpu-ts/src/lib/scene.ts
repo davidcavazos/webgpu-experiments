@@ -33,7 +33,7 @@ export function ref(args: {
   });
 }
 
-export function mesh(args: {
+export function mesh(args?: {
   id?: AssetID;
   vertices?: number[][];
   indices?: number[];
@@ -43,9 +43,24 @@ export function mesh(args: {
   return entity({
     asset: {
       tag: "MeshDescriptor",
-      id: args.id,
-      vertices: args.vertices ?? [],
-      indices: args.indices ?? [],
+      id: args?.id,
+      vertices: args?.vertices ?? [],
+      indices: args?.indices ?? [],
+    },
+    transform: args?.transform,
+    entities: args?.entities,
+  });
+}
+
+export function camera(args: {
+  projection: Float32Array;
+  transform?: Float32Array;
+  entities?: Record<EntityID, Entity>;
+}) {
+  return entity({
+    asset: {
+      tag: "CameraDescriptor",
+      projection: args?.projection,
     },
     transform: args.transform,
     entities: args.entities,

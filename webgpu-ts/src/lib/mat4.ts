@@ -86,7 +86,7 @@ export const mat4 = {
     return dst;
   },
 
-  multiply(a, b, dst) {
+  multiply(a, b, dst?: Float32Array): Float32Array {
     dst = dst || new Float32Array(16);
     const b00 = b[0 * 4 + 0];
     const b01 = b[0 * 4 + 1];
