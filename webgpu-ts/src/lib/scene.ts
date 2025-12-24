@@ -1,4 +1,4 @@
-import type { AssetDescriptor, AssetID } from "./engine";
+import type { AssetDescriptor, AssetID } from "./asset";
 import { mat4 } from "./mat4";
 
 export type EntityID = string;
@@ -52,19 +52,19 @@ export function mesh(args?: {
   });
 }
 
-export function camera(args: {
-  projection: Float32Array;
-  transform?: Float32Array;
-  entities?: Record<EntityID, Entity>;
-}) {
-  return entity({
-    asset: {
-      tag: "CameraDescriptor",
-      projection: args?.projection,
-    },
-    transform: args.transform,
-    entities: args.entities,
-  });
-}
+// export function camera(args: {
+//   projection: Float32Array;
+//   transform?: Float32Array;
+//   entities?: Record<EntityID, Entity>;
+// }) {
+//   return entity({
+//     asset: {
+//       tag: "CameraDescriptor",
+//       projection: args?.projection,
+//     },
+//     transform: args.transform,
+//     entities: args.entities,
+//   });
+// }
 
 export type Scene = Record<EntityID, Entity>;

@@ -1,12 +1,8 @@
-import {
-  Engine,
-  start,
-  type InitState as StateInit,
-  type State,
-} from "./lib/engine";
+import { Engine } from "./lib/engine";
 import * as io from "./lib/io";
 import { mat4 } from "./lib/mat4";
-import { camera, mesh } from "./lib/scene";
+import { mesh } from "./lib/scene";
+import { start, type InitState as StateInit, type State } from "./lib/start";
 
 const canvas: HTMLCanvasElement = document.querySelector("#canvas")!;
 
@@ -22,7 +18,17 @@ interface App {
   };
 }
 
+function projection(width: number, height: number) {
+  const fieldOfView = 100;
+  const aspect = width / height;
+  const zNear = 1;
+  const zFar = 2000;
+  return mat4.perspective(fieldOfView, aspect, zNear, zFar);
+}
+
 async function init(engine: Engine): Promise<StateInit<App>> {
+  console.log(engine.device.limits);
+
   // Check for shader compilation errors.
   const messages = await engine.shaderCompilationMessages();
   if (messages.info.length > 0) {
@@ -47,14 +53,9 @@ async function init(engine: Engine): Promise<StateInit<App>> {
 
   // Build/load the initial scene.
   const scene = {
-    mycamera: camera({
-      projection: mat4.perspective(
-        engine.canvas.width,
-        engine.canvas.height,
-        1,
-        2000,
-      ),
-    }),
+    // camera: camera({
+    //   projection: mat4.perspective(fieldOfView, aspect, zNear, zFar),
+    // }),
     triangle1: mesh({
       id: "triangle-mesh",
       vertices: [
@@ -130,4 +131,4 @@ function updateAfterDraw(state: State<App>): State<App> {
   return state;
 }
 
-start({ canvas, init, update, updateAfterDraw });
+start({ canvas, projection, init, update, updateAfterDraw });

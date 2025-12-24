@@ -1,6 +1,14 @@
-import type { BufferSlot } from "./assets/bufferBase";
-import { CameraBuffer, type CameraBufferSlot } from "./assets/cameraBuffer";
+import type {
+  Asset,
+  AssetDescriptor,
+  AssetID,
+  AssetLoader,
+  AssetLOD,
+  Mesh,
+  RequestID,
+} from "./asset";
 import { EntityBuffer, type EntityBufferSlot } from "./assets/entityBuffer";
+import { Globals } from "./assets/globals";
 import { IndexBuffer, type IndexBufferSlot } from "./assets/indexBuffer";
 import { VertexBuffer, type VertexBufferSlot } from "./assets/vertexBuffer";
 import { loadObj } from "./loaders/mesh.obj";
@@ -39,172 +47,11 @@ import { parseInt, stringHash } from "./stdlib";
 //     - Unload current LOD
 
 export type FilePattern = string;
-export type AssetID = string;
-export type AssetLOD = number;
-export type RequestID = string;
-export type AssetLoader = (
-  id: AssetID,
-  lod: AssetLOD,
-) => Promise<AssetDescriptor>;
-
-export type AssetError = {
-  tag: "AssetError";
-  id: AssetID;
-  lod: AssetLOD;
-  reason: string;
-};
-
-export type AssetReference = {
-  tag: "AssetReference";
-  filename: string;
-};
-export type MeshDescriptor = {
-  tag: "MeshDescriptor";
-  id?: AssetID;
-  // TODO: lods: {AssetLOD: {vertices, indices}}
-  vertices: number[][];
-  indices: number[]; // TODO: faces: number[][]
-};
-export type CameraDescriptor = {
-  tag: "CameraDescriptor";
-  projection: Float32Array;
-};
-export type AssetDescriptor =
-  | AssetReference
-  | MeshDescriptor
-  | CameraDescriptor
-  | AssetError;
-
-export type AssetLoading = {
-  tag: "AssetLoading";
-  id: RequestID;
-};
-export type Mesh = {
-  tag: "Mesh";
-  vertices: VertexBufferSlot;
-  indices: IndexBufferSlot;
-};
-export type Camera = {
-  tag: "Camera";
-  viewProjection: CameraBufferSlot;
-};
-export type Asset = AssetLoading | Mesh | Camera | AssetError;
 
 export interface BatchDraw {
   entities: EntityBufferSlot;
   vertices: VertexBufferSlot;
   indices: IndexBufferSlot;
-}
-
-export interface InitState<a> {
-  scene: Scene;
-  app: a;
-}
-
-export interface State<a> {
-  readonly frameNumber: number;
-  readonly deltaTime: number;
-  readonly now: number;
-  scene: Scene;
-  app: a;
-}
-
-export async function start<a>(args: {
-  canvas: HTMLCanvasElement;
-  init: (engine: Engine) => Promise<{ scene: Scene; app: a }>;
-  update?: (state: State<a>) => State<a>;
-  updateAfterDraw?: (state: State<a>) => State<a>;
-  camera?: EntityID;
-}) {
-  // Get the GPU device
-  if (!navigator.gpu) {
-    window.alert("this browser does not support WebGPU");
-    return;
-  }
-  const adapter = await navigator.gpu.requestAdapter();
-  if (!adapter) {
-    window.alert("this browser supports webgpu but it appears disabled");
-    return;
-  }
-  const device = await adapter.requestDevice();
-  device.lost.then((info) => {
-    window.alert(`WebGPU device was lost: ${info.message}`);
-    if (info.reason !== "destroyed") {
-      start(args);
-    }
-  });
-
-  const context = args.canvas.getContext("webgpu");
-  if (!context) {
-    throw Error("Could not get a WebGPU context.");
-  }
-  context.configure({
-    device,
-    format: navigator.gpu.getPreferredCanvasFormat(),
-    alphaMode: "premultiplied",
-  });
-
-  console.log(device);
-  const engine = new Engine({ device, canvas: args.canvas, context });
-
-  const initialState = await args.init(engine);
-  let state: State<a> = {
-    ...initialState,
-    frameNumber: 0,
-    deltaTime: 0,
-    now: performance.now(),
-  };
-  function render(now: number) {
-    if (now === state.now) {
-      return;
-    }
-    state = {
-      ...state,
-      deltaTime: (now - state.now) * 0.001,
-      now: now,
-      frameNumber: state.frameNumber + 1,
-    };
-
-    if (args.update) {
-      state = args.update(state);
-    }
-    engine.draw(state.scene, now);
-    if (args.updateAfterDraw) {
-      state = args.updateAfterDraw(state);
-    }
-    requestAnimationFrame(render);
-  }
-  requestAnimationFrame(render);
-
-  // Handle window resize.
-  // https://webgpufundamentals.org/webgpu/lessons/webgpu-resizing-the-canvas.html
-  const observer = new ResizeObserver((entries) => {
-    for (const entry of entries) {
-      const width =
-        entry.devicePixelContentBoxSize?.[0]?.inlineSize ||
-        (entry.contentBoxSize[0]?.inlineSize || args.canvas.width) *
-          devicePixelRatio;
-      const height =
-        entry.devicePixelContentBoxSize?.[0]?.blockSize ||
-        (entry.contentBoxSize[0]?.blockSize || args.canvas.height) *
-          devicePixelRatio;
-      //   const canvas: HTMLCanvasElement = entry.target;
-      args.canvas.width = Math.max(
-        1,
-        Math.min(width, device.limits.maxTextureDimension2D),
-      );
-      args.canvas.height = Math.max(
-        1,
-        Math.min(height, device.limits.maxTextureDimension2D),
-      );
-      requestAnimationFrame(render);
-    }
-  });
-  try {
-    observer.observe(args.canvas, { box: "device-pixel-content-box" });
-  } catch {
-    observer.observe(args.canvas, { box: "content-box" });
-  }
 }
 
 export class Engine {
@@ -218,8 +65,7 @@ export class Engine {
     opaque: Record<AssetID, BatchDraw>;
   };
   shaderModule: GPUShaderModule;
-  globalsBuffer: GPUBuffer;
-  cameraBuffer: CameraBuffer;
+  globals: Globals;
   entityBuffer: EntityBuffer;
   vertexBuffer: VertexBuffer;
   indexBuffer: IndexBuffer;
@@ -250,11 +96,7 @@ export class Engine {
     });
 
     const presentationFormat = navigator.gpu.getPreferredCanvasFormat();
-    this.globalsBuffer = this.device.createBuffer({
-      size: 4 * 4 * Float32Array.BYTES_PER_ELEMENT,
-      usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
-    });
-    this.cameraBuffer = new CameraBuffer(this.device);
+    this.globals = new Globals(this.device);
     this.entityBuffer = new EntityBuffer(this.device);
     this.vertexBuffer = new VertexBuffer(this.device);
     this.indexBuffer = new IndexBuffer(this.device);
@@ -262,17 +104,17 @@ export class Engine {
     const bindGroupLayout = this.device.createBindGroupLayout({
       entries: [
         {
-          binding: 0,
+          binding: 0, // globals
           visibility: GPUShaderStage.VERTEX,
           buffer: { type: "uniform" },
         },
+        // {
+        //   binding: 1, // cameras
+        //   visibility: GPUShaderStage.VERTEX,
+        //   buffer: { type: "uniform" },
+        // },
         {
-          binding: 1,
-          visibility: GPUShaderStage.VERTEX,
-          buffer: { type: "uniform" },
-        },
-        {
-          binding: 2,
+          binding: 2, // entities
           visibility: GPUShaderStage.VERTEX,
           buffer: { type: "read-only-storage" },
         },
@@ -308,15 +150,15 @@ export class Engine {
       layout: this.pipeline.getBindGroupLayout(0),
       entries: [
         {
-          binding: 0,
-          resource: { buffer: this.globalsBuffer },
+          binding: 0, // globals
+          resource: { buffer: this.globals.buffer },
         },
+        // {
+        //   binding: 1, // cameras
+        //   resource: { buffer: this.lightBuffer.buffer },
+        // },
         {
-          binding: 1,
-          resource: { buffer: this.cameraBuffer.buffer },
-        },
-        {
-          binding: 2,
+          binding: 2, // entities
           resource: { buffer: this.entityBuffer.buffer },
         },
       ],
@@ -352,16 +194,13 @@ export class Engine {
     return { info, warnings, errors };
   }
 
-  draw(scene: Scene, now: number) {
-    // TODO: calculate this from scene-cameras.
-    const fieldOfView = 100;
-    const aspect = this.canvas.width / this.canvas.height;
-    const zNear = 1;
-    const zFar = 2000;
-    const viewProjection = mat4.perspective(fieldOfView, aspect, zNear, zFar);
+  draw(scene: Scene, now: number, cameraID?: EntityID) {
+    // TODO: get cameraID from stage, maybe pass the camera's entity ID for heurisitc
+    const view = mat4.identity();
+    mat4.multiply(this.globals.projection, view, this.globals.viewProjection);
+    this.globals.writeBuffer();
 
     this.stage(scene, now);
-    this.device.queue.writeBuffer(this.globalsBuffer, 0, viewProjection);
 
     const encoder = this.device.createCommandEncoder();
     const pass = encoder.beginRenderPass({
@@ -480,12 +319,6 @@ export class Engine {
           indices: this.indexBuffer.write(asset.indices),
         };
 
-      case "CameraDescriptor":
-        return {
-          tag: "Camera",
-          viewProjection: this.cameraBuffer.write(asset.projection),
-        };
-
       case "AssetError":
         return asset;
 
@@ -559,10 +392,10 @@ function getAssetIDBase(asset: AssetDescriptor) {
     }
     case "AssetError":
       return `AssetError<${asset.id}:${asset.lod}>`;
-    case "CameraDescriptor": {
-      const hash = JSON.stringify([...asset.projection]);
-      return `Camera<${hash}>`;
-    }
+    // case "CameraDescriptor": {
+    //   const hash = JSON.stringify([...asset.projection]);
+    //   return `Camera<${hash}>`;
+    // }
     default:
       throw new Error(
         `engine.getAssetIDBase: not implemented ${(asset as AssetDescriptor).tag}`,
@@ -573,14 +406,9 @@ function getAssetIDBase(asset: AssetDescriptor) {
 // TODO: make this a function to get max counts for Camera and Entity
 const defaultShaders = /* wgsl */ `
   struct Globals {
-    viewProjection: mat4x4f,
+    view_projection: mat4x4f,
   };
   @group(0) @binding(0) var<uniform> globals: Globals;
-
-  struct Camera {
-    viewProjection: mat4x4f,
-  };
-  @group(0) @binding(1) var<uniform> cameras: array<Camera, 100>;
 
   struct Entity {
     transform: mat4x4f,
@@ -605,7 +433,7 @@ const defaultShaders = /* wgsl */ `
   ) -> VertexOutput {
     var entity = entities[instance_id];
     var output: VertexOutput;
-    output.position = globals.viewProjection * entity.transform * vec4f(input.position, 1.0);
+    output.position = globals.view_projection * entity.transform * vec4f(input.position, 1.0);
     output.normal = input.normal;
     return output;
   }
