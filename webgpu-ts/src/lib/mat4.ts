@@ -259,15 +259,15 @@ export const mat4 = {
     return mat4.multiply(m, mat4.translation(translation), dst);
   },
 
-  rotateX(m, angleInRadians, dst) {
+  rotateX(m, angleInRadians, dst?: Float32Array) {
     return mat4.multiply(m, mat4.rotationX(angleInRadians), dst);
   },
 
-  rotateY(m, angleInRadians, dst) {
+  rotateY(m, angleInRadians, dst?: Float32Array) {
     return mat4.multiply(m, mat4.rotationY(angleInRadians), dst);
   },
 
-  rotateZ(m, angleInRadians, dst) {
+  rotateZ(m, angleInRadians, dst?: Float32Array) {
     return mat4.multiply(m, mat4.rotationZ(angleInRadians), dst);
   },
 

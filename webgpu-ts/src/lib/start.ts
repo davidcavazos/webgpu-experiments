@@ -1,6 +1,6 @@
 import type { Globals } from "./assets/globals";
 import { Engine } from "./engine";
-import type { EntityID, Scene } from "./scene";
+import { camera, type Entity, type EntityID, type Scene } from "./scene";
 
 export interface InitState<a> {
   scene: Scene;
@@ -11,6 +11,7 @@ export interface State<a> {
   readonly frameNumber: number;
   readonly deltaTime: number;
   readonly now: number;
+  defaultCamera: Entity;
   globals: Globals;
   scene: Scene;
   app: a;
@@ -58,6 +59,7 @@ export async function start<a>(args: {
   let state: State<a> = {
     scene: initialState.scene,
     app: initialState.app,
+    defaultCamera: camera(),
     globals: engine.globals,
     frameNumber: 0,
     deltaTime: 0,
@@ -104,9 +106,6 @@ export async function start<a>(args: {
     // - Maybe some reference to the canvas?
     // The canvas should contain the camera projection and camera entity ID
     // - The entity should contain the view transform
-    console.log(
-      "TODO: update projection matrix on resize (how/when to update multiple cameras?)",
-    );
     for (const entry of entries) {
       const width =
         entry.devicePixelContentBoxSize?.[0]?.inlineSize ||

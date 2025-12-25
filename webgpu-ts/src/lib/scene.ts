@@ -1,5 +1,6 @@
 import type { AssetDescriptor, AssetID } from "./asset";
 import { mat4 } from "./mat4";
+import { Just, None, type Maybe } from "./stdlib";
 import { Transform } from "./transform";
 
 export type EntityID = string;
@@ -68,13 +69,24 @@ export function mesh(args?: {
 //   });
 // }
 
+export function camera(args?: {
+  transform?: Transform;
+  entities?: Record<EntityID, Entity>;
+}) {
+  return entity({
+    asset: { tag: "Node" },
+    transform: args?.transform,
+    entities: args?.entities,
+  });
+}
+
 export class Scene {
   entities: Record<EntityID, Entity>;
   constructor(entities?: Record<EntityID, Entity>) {
     this.entities = entities ?? {};
   }
 
-  find(path: EntityID[]) {
+  find(path: EntityID[]): Entity | undefined {
     return $find(path, this.entities);
   }
 }

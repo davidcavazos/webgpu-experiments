@@ -100,7 +100,8 @@ async function init(engine: Engine): Promise<StateInit<App>> {
 function update(state: State<App>): State<App> {
   const updateStart = performance.now();
 
-  const view = state.scene.find(["camera"])?.transform ?? new Transform();
+  // let ref camera = state.scene.find(["camera"]) or state.default-camera
+  const camera = state.scene.find(["camera"]) ?? state.defaultCamera;
 
   const input = state.app.input;
   const mouse = input.mouse.poll();
@@ -109,20 +110,31 @@ function update(state: State<App>): State<App> {
     if (keyboard.shift.held) {
       // Shift + scroll -> pan camera
       const speed = 0.5 * state.deltaTime;
-      const translation = [mouse.scroll.x * speed, -mouse.scroll.y * speed, 0];
-      mat4.translate(view.matrix, translation, view.matrix);
+      camera.transform = camera.transform.translate(
+        mouse.scroll.x * speed,
+        -mouse.scroll.y * speed,
+        0,
+      );
+      // const translation = [mouse.scroll.x * speed, -mouse.scroll.y * speed, 0];
+      // mat4.translate(view.matrix, translation, view.matrix);
     } else if (keyboard.alt.held) {
       // Alt + scroll -> rotate camera
       const speed = 0.2 * state.deltaTime;
       // mat4.rotateZ(view, mouse.scroll.z * speed, view);
-      mat4.rotateY(view.matrix, mouse.scroll.x * speed, view.matrix);
-      mat4.rotateX(view.matrix, mouse.scroll.y * speed, view.matrix);
+      camera.transform = camera.transform.rotate(
+        mouse.scroll.x * speed,
+        mouse.scroll.y * speed,
+        0,
+      );
     } else if (keyboard.ctrl.held || keyboard.meta.held) {
       // Ctrl + scroll -> zoom camera
       // Meta + scroll -> zoom camera
       const speed = 1.5 * state.deltaTime;
-      const translation = [0, 0, (mouse.scroll.x - mouse.scroll.y) * speed];
-      mat4.translate(view.matrix, translation, view.matrix);
+      camera.transform = camera.transform.translate(
+        0,
+        0,
+        (mouse.scroll.x - mouse.scroll.y) * speed,
+      );
     } else {
       // scroll -> orbit camera
       console.log("TODO: orbit");
@@ -131,7 +143,7 @@ function update(state: State<App>): State<App> {
 
   mat4.multiply(
     state.globals.projection,
-    view.matrix,
+    camera.transform.matrix,
     state.globals.viewProjection,
   );
 

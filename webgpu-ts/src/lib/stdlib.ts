@@ -1,3 +1,20 @@
+export class Maybe<a> {
+  value: a | undefined;
+  constructor(value?: a | undefined) {
+    this.value = value;
+  }
+
+  map<b>(f: (x: a) => b) {
+    if (this.value !== undefined) {
+      return f(this.value);
+    }
+    return undefined;
+  }
+}
+
+export const None = <a>() => new Maybe<a>();
+export const Just = <a>(x: a) => new Maybe(x);
+
 export const parseInt = (x: string) => Number(x);
 
 export const parseMaybeInt = (x: string) =>
