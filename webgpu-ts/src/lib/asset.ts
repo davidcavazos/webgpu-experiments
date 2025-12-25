@@ -9,6 +9,10 @@ export type AssetLoader = (
   lod: AssetLOD,
 ) => Promise<AssetDescriptor>;
 
+export type Node = {
+  tag: "Node";
+};
+
 export type AssetError = {
   tag: "AssetError";
   id: AssetID;
@@ -27,7 +31,11 @@ export type MeshDescriptor = {
   vertices: number[][];
   indices: number[]; // TODO: faces: number[][]
 };
-export type AssetDescriptor = AssetReference | MeshDescriptor | AssetError;
+export type AssetDescriptor =
+  | Node
+  | AssetReference
+  | MeshDescriptor
+  | AssetError;
 
 export type AssetLoading = {
   tag: "AssetLoading";
@@ -38,4 +46,4 @@ export type Mesh = {
   vertices: VertexBufferSlot;
   indices: IndexBufferSlot;
 };
-export type Asset = AssetLoading | Mesh | AssetError;
+export type Asset = Node | AssetLoading | Mesh | AssetError;

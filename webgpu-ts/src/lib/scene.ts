@@ -67,4 +67,27 @@ export function mesh(args?: {
 //   });
 // }
 
-export type Scene = Record<EntityID, Entity>;
+export class Scene {
+  entities: Record<EntityID, Entity>;
+  constructor(entities?: Record<EntityID, Entity>) {
+    this.entities = entities ?? {};
+  }
+
+  find(path: EntityID[]) {
+    return $find(path, this.entities);
+  }
+}
+
+function $find(
+  path: EntityID[],
+  entities: Record<EntityID, Entity>,
+): Entity | undefined {
+  const [head, ...tail] = path;
+  if (head === undefined) {
+    return undefined;
+  }
+  if (tail.length === 0) {
+    return entities[head];
+  }
+  return $find(tail, entities[head]?.entities ?? {});
+}

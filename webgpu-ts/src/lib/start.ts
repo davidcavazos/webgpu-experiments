@@ -1,3 +1,4 @@
+import type { Globals } from "./assets/globals";
 import { Engine } from "./engine";
 import type { EntityID, Scene } from "./scene";
 
@@ -10,6 +11,7 @@ export interface State<a> {
   readonly frameNumber: number;
   readonly deltaTime: number;
   readonly now: number;
+  globals: Globals;
   scene: Scene;
   app: a;
 }
@@ -56,6 +58,7 @@ export async function start<a>(args: {
   let state: State<a> = {
     scene: initialState.scene,
     app: initialState.app,
+    globals: engine.globals,
     frameNumber: 0,
     deltaTime: 0,
     now: performance.now(),

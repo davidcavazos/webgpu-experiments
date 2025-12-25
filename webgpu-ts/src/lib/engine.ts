@@ -194,12 +194,8 @@ export class Engine {
     return { info, warnings, errors };
   }
 
-  draw(scene: Scene, now: number, cameraID?: EntityID) {
-    // TODO: get cameraID from stage, maybe pass the camera's entity ID for heurisitc
-    const view = mat4.identity();
-    mat4.multiply(this.globals.projection, view, this.globals.viewProjection);
+  draw(scene: Scene, now: number) {
     this.globals.writeBuffer();
-
     this.stage(scene, now);
 
     const encoder = this.device.createCommandEncoder();
@@ -233,7 +229,7 @@ export class Engine {
 
   stage(scene: Scene, now: number) {
     // TODO: keep track on LRU of when an asset was used with `now`
-    const instances = Object.values(scene).map((entity) => ({
+    const instances = Object.values(scene.entities).map((entity) => ({
       entity,
       lod: 0,
     }));
@@ -290,6 +286,8 @@ export class Engine {
 
   loadAsset(id: AssetID, asset: AssetDescriptor, lod: AssetLOD): Asset {
     switch (asset.tag) {
+      case "Node":
+        return asset;
       case "AssetReference":
         const request = this.loading[id];
         if (request === undefined) {
@@ -381,6 +379,8 @@ function isLowerLOD(id1: AssetID, id2: AssetID): boolean {
 
 function getAssetIDBase(asset: AssetDescriptor) {
   switch (asset.tag) {
+    case "Node":
+      return "Node";
     case "AssetReference":
       return asset.filename;
     case "MeshDescriptor": {

@@ -20,6 +20,9 @@ function buttonState(state?: ButtonState): ButtonState {
   return { down: false, up: false, held: state?.held ?? false };
 }
 
+const buttonDown = { down: true, up: false, held: true };
+const buttonUp = { down: false, up: true, held: false };
+
 export interface MouseScroll {
   x: number;
   y: number;
@@ -53,26 +56,30 @@ function mouseState(state?: MouseState): MouseState {
 export class Mouse {
   $state: MouseState;
 
-  constructor(elem: HTMLElement) {
+  constructor() {
     this.$state = mouseState();
-    elem.addEventListener("mousemove", (event: MouseEvent) => {
+
+    window.addEventListener("mousemove", (event: MouseEvent) => {
       this.$state.moved = true;
       this.$state.position = {
         x: event.x,
         y: event.y,
       };
     });
-    elem.addEventListener("mousedown", (event: MouseEvent) => {
+
+    window.addEventListener("mousedown", (event: MouseEvent) => {
       if (event.buttons & MOUSE_BUTTON_LEFT) {
-        this.$state.left = { down: true, up: false, held: true };
+        this.$state.left = buttonDown;
       }
     });
-    elem.addEventListener("mouseup", (event: MouseEvent) => {
+
+    window.addEventListener("mouseup", (event: MouseEvent) => {
       if (event.buttons & MOUSE_BUTTON_LEFT) {
-        this.$state.left = { down: false, up: true, held: false };
+        this.$state.left = buttonDown;
       }
     });
-    elem.addEventListener("wheel", (event: WheelEvent) => {
+
+    window.addEventListener("wheel", (event: WheelEvent) => {
       const current = this.$state.scroll ?? { x: 0, y: 0, z: 0 };
       this.$state.scroll = {
         x: current.x + event.deltaX,
@@ -132,81 +139,91 @@ function keyboardState(state?: KeyboardState): KeyboardState {
 
 export class Keyboard {
   $state: KeyboardState;
-  constructor(elem: HTMLElement) {
+  constructor() {
     this.$state = keyboardState();
-    elem.addEventListener("onkeydown", (rawEvent: Event) => {
-      const event = rawEvent as KeyboardEvent;
-      if (event.shiftKey) {
-        this.$state.shift = { down: true, up: false, held: true };
-        if (event.location === event.DOM_KEY_LOCATION_LEFT) {
-          this.$state.left.shift = { down: true, up: false, held: true };
-        } else if (event.location === event.DOM_KEY_LOCATION_RIGHT) {
-          this.$state.right.shift = { down: true, up: false, held: true };
-        }
-      }
-      if (event.ctrlKey) {
-        this.$state.ctrl = { down: true, up: false, held: true };
-        if (event.location === event.DOM_KEY_LOCATION_LEFT) {
-          this.$state.left.ctrl = { down: true, up: false, held: true };
-        } else if (event.location === event.DOM_KEY_LOCATION_RIGHT) {
-          this.$state.right.ctrl = { down: true, up: false, held: true };
-        }
-      }
-      if (event.altKey) {
-        this.$state.alt = { down: true, up: false, held: true };
-        if (event.location === event.DOM_KEY_LOCATION_LEFT) {
-          this.$state.left.alt = { down: true, up: false, held: true };
-        } else if (event.location === event.DOM_KEY_LOCATION_RIGHT) {
-          this.$state.right.alt = { down: true, up: false, held: true };
-        }
-      }
-      if (event.metaKey) {
-        this.$state.meta = { down: true, up: false, held: true };
-        if (event.location === event.DOM_KEY_LOCATION_LEFT) {
-          this.$state.left.meta = { down: true, up: false, held: true };
-        } else if (event.location === event.DOM_KEY_LOCATION_RIGHT) {
-          this.$state.right.meta = { down: true, up: false, held: true };
-        }
+
+    window.addEventListener("keydown", (event: KeyboardEvent) => {
+      switch (event.key) {
+        case "Shift":
+          this.$state.shift = buttonDown;
+          if (event.location === event.DOM_KEY_LOCATION_LEFT) {
+            this.$state.left.shift = buttonDown;
+          } else if (event.location === event.DOM_KEY_LOCATION_RIGHT) {
+            this.$state.right.shift = buttonDown;
+          }
+          break;
+        case "Control":
+          this.$state.ctrl = buttonDown;
+          if (event.location === event.DOM_KEY_LOCATION_LEFT) {
+            this.$state.left.ctrl = buttonDown;
+          } else if (event.location === event.DOM_KEY_LOCATION_RIGHT) {
+            this.$state.right.ctrl = buttonDown;
+          }
+          break;
+        case "Alt":
+          this.$state.alt = buttonDown;
+          if (event.location === event.DOM_KEY_LOCATION_LEFT) {
+            this.$state.left.alt = buttonDown;
+          } else if (event.location === event.DOM_KEY_LOCATION_RIGHT) {
+            this.$state.right.alt = buttonDown;
+          }
+          break;
+        case "Meta":
+          this.$state.meta = buttonDown;
+          if (event.location === event.DOM_KEY_LOCATION_LEFT) {
+            this.$state.left.meta = buttonDown;
+          } else if (event.location === event.DOM_KEY_LOCATION_RIGHT) {
+            this.$state.right.meta = buttonDown;
+          }
+          break;
+        default:
+          console.log(event);
       }
     });
-    elem.addEventListener("onkeyup", (rawEvent: Event) => {
-      const event = rawEvent as KeyboardEvent;
-      if (event.shiftKey) {
-        this.$state.shift = { down: false, up: true, held: false };
-        if (event.location === event.DOM_KEY_LOCATION_LEFT) {
-          this.$state.left.shift = { down: false, up: true, held: false };
-        } else if (event.location === event.DOM_KEY_LOCATION_RIGHT) {
-          this.$state.right.shift = { down: false, up: true, held: false };
-        }
-      }
-      if (event.ctrlKey) {
-        this.$state.ctrl = { down: false, up: true, held: false };
-        if (event.location === event.DOM_KEY_LOCATION_LEFT) {
-          this.$state.left.ctrl = { down: false, up: true, held: false };
-        } else if (event.location === event.DOM_KEY_LOCATION_RIGHT) {
-          this.$state.right.ctrl = { down: false, up: true, held: false };
-        }
-      }
-      if (event.altKey) {
-        this.$state.alt = { down: false, up: true, held: false };
-        if (event.location === event.DOM_KEY_LOCATION_LEFT) {
-          this.$state.left.alt = { down: false, up: true, held: false };
-        } else if (event.location === event.DOM_KEY_LOCATION_RIGHT) {
-          this.$state.right.alt = { down: false, up: true, held: false };
-        }
-      }
-      if (event.metaKey) {
-        this.$state.meta = { down: false, up: true, held: false };
-        if (event.location === event.DOM_KEY_LOCATION_LEFT) {
-          this.$state.left.meta = { down: false, up: true, held: false };
-        } else if (event.location === event.DOM_KEY_LOCATION_RIGHT) {
-          this.$state.right.meta = { down: false, up: true, held: false };
-        }
+
+    window.addEventListener("keyup", (event: KeyboardEvent) => {
+      switch (event.key) {
+        case "Shift":
+          this.$state.shift = buttonUp;
+          if (event.location === event.DOM_KEY_LOCATION_LEFT) {
+            this.$state.left.shift = buttonUp;
+          } else if (event.location === event.DOM_KEY_LOCATION_RIGHT) {
+            this.$state.right.shift = buttonUp;
+          }
+          break;
+        case "Control":
+          this.$state.ctrl = buttonUp;
+          if (event.location === event.DOM_KEY_LOCATION_LEFT) {
+            this.$state.left.ctrl = buttonUp;
+          } else if (event.location === event.DOM_KEY_LOCATION_RIGHT) {
+            this.$state.right.ctrl = buttonUp;
+          }
+          break;
+        case "Alt":
+          this.$state.alt = buttonUp;
+          if (event.location === event.DOM_KEY_LOCATION_LEFT) {
+            this.$state.left.alt = buttonUp;
+          } else if (event.location === event.DOM_KEY_LOCATION_RIGHT) {
+            this.$state.right.alt = buttonUp;
+          }
+          break;
+        case "Meta":
+          this.$state.meta = buttonUp;
+          if (event.location === event.DOM_KEY_LOCATION_LEFT) {
+            this.$state.left.meta = buttonUp;
+          } else if (event.location === event.DOM_KEY_LOCATION_RIGHT) {
+            this.$state.right.meta = buttonUp;
+          }
+          break;
+        default:
+          console.log(event);
       }
     });
   }
 
   poll(): KeyboardState {
-    return this.$state;
+    const state = { ...this.$state };
+    this.$state = keyboardState(state);
+    return state;
   }
 }
