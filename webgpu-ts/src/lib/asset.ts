@@ -12,7 +12,6 @@ export type AssetLoader = (
 export type Node = {
   tag: "Node";
 };
-
 export type AssetError = {
   tag: "AssetError";
   id: AssetID;

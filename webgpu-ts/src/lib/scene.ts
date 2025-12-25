@@ -1,29 +1,30 @@
 import type { AssetDescriptor, AssetID } from "./asset";
 import { mat4 } from "./mat4";
+import { Transform } from "./transform";
 
 export type EntityID = string;
 
 export type Entity = {
   asset: AssetDescriptor;
-  transform: Float32Array;
+  transform: Transform;
   entities: Record<EntityID, Entity>;
 };
 
 export function entity(args: {
   asset: AssetDescriptor;
-  transform?: Float32Array;
+  transform?: Transform;
   entities?: Record<EntityID, Entity>;
 }): Entity {
   return {
     asset: args.asset,
-    transform: args.transform ? args.transform : mat4.identity(),
+    transform: args.transform ?? new Transform(),
     entities: args.entities ?? {},
   };
 }
 
 export function ref(args: {
   filename: string;
-  transform?: Float32Array;
+  transform?: Transform;
   entities?: Record<EntityID, Entity>;
 }): Entity {
   return entity({
@@ -37,7 +38,7 @@ export function mesh(args?: {
   id?: AssetID;
   vertices?: number[][];
   indices?: number[];
-  transform?: Float32Array;
+  transform?: Transform;
   entities?: Record<EntityID, Entity>;
 }): Entity {
   return entity({

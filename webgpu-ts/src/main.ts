@@ -3,6 +3,7 @@ import * as io from "./lib/io";
 import { mat4 } from "./lib/mat4";
 import { mesh, Scene } from "./lib/scene";
 import { start, type InitState as StateInit, type State } from "./lib/start";
+import { Transform } from "./lib/transform";
 
 const canvas: HTMLCanvasElement = document.querySelector("#canvas")!;
 
@@ -55,7 +56,7 @@ async function init(engine: Engine): Promise<StateInit<App>> {
   const scene = new Scene({
     camera: {
       asset: { tag: "Node" },
-      transform: mat4.translate(mat4.identity(), [0, 0, 0]),
+      transform: new Transform().translate(0, 0, 0),
       entities: {},
     },
     triangle1: mesh({
@@ -66,14 +67,15 @@ async function init(engine: Engine): Promise<StateInit<App>> {
         [0, 1, 0],
       ],
       indices: [0, 1, 2],
-      transform: mat4.translate(mat4.identity(), [0, 0, -4]),
+      transform: new Transform().translate(0, 0, -4),
     }),
     triangle2: mesh({
       id: "triangle-mesh",
-      transform: mat4.scale(
-        mat4.translate(mat4.identity(), [-0.5, -1, -4]),
-        [0.5, 0.5, 0.5],
-      ),
+      // transform: mat4.scale(
+      //   mat4.translate(mat4.identity(), [-0.5, -1, -4]),
+      //   [0.5, 0.5, 0.5],
+      // ),
+      transform: new Transform().translate(-0.5, -1, -4).scale(0.5, 0.5, 0.5),
     }),
     // pyramid1: ref({ filename: "assets/pyramid.obj" }),
   });
@@ -98,7 +100,7 @@ async function init(engine: Engine): Promise<StateInit<App>> {
 function update(state: State<App>): State<App> {
   const updateStart = performance.now();
 
-  const view = state.scene.find(["camera"])?.transform ?? mat4.identity();
+  const view = state.scene.find(["camera"])?.transform ?? new Transform();
 
   const input = state.app.input;
   const mouse = input.mouse.poll();
@@ -108,26 +110,30 @@ function update(state: State<App>): State<App> {
       // Shift + scroll -> pan camera
       const speed = 0.5 * state.deltaTime;
       const translation = [mouse.scroll.x * speed, -mouse.scroll.y * speed, 0];
-      mat4.translate(view, translation, view);
+      mat4.translate(view.matrix, translation, view.matrix);
     } else if (keyboard.alt.held) {
       // Alt + scroll -> rotate camera
       const speed = 0.2 * state.deltaTime;
       // mat4.rotateZ(view, mouse.scroll.z * speed, view);
-      mat4.rotateY(view, mouse.scroll.x * speed, view);
-      mat4.rotateX(view, mouse.scroll.y * speed, view);
+      mat4.rotateY(view.matrix, mouse.scroll.x * speed, view.matrix);
+      mat4.rotateX(view.matrix, mouse.scroll.y * speed, view.matrix);
     } else if (keyboard.ctrl.held || keyboard.meta.held) {
       // Ctrl + scroll -> zoom camera
       // Meta + scroll -> zoom camera
       const speed = 1.5 * state.deltaTime;
       const translation = [0, 0, (mouse.scroll.x - mouse.scroll.y) * speed];
-      mat4.translate(view, translation, view);
+      mat4.translate(view.matrix, translation, view.matrix);
     } else {
       // scroll -> orbit camera
       console.log("TODO: orbit");
     }
   }
 
-  mat4.multiply(state.globals.projection, view, state.globals.viewProjection);
+  mat4.multiply(
+    state.globals.projection,
+    view.matrix,
+    state.globals.viewProjection,
+  );
 
   // Get metrics.
   const updateEnd = performance.now();
