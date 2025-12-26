@@ -1,17 +1,17 @@
-import type {
-  Asset,
-  AssetDescriptor,
-  AssetID,
-  AssetLoader,
-  AssetLOD,
+import {
+  AssetEmpty,
+  AssetLoading,
   Mesh,
-  RequestID,
+  type Asset,
+  type AssetID,
+  type AssetLOD,
+  type RequestID,
 } from "./asset";
 import { EntityBuffer, type EntityBufferSlot } from "./assets/entityBuffer";
 import { Globals } from "./assets/globals";
 import { IndexBuffer, type IndexBufferSlot } from "./assets/indexBuffer";
 import { VertexBuffer, type VertexBufferSlot } from "./assets/vertexBuffer";
-import type { Entity } from "./entity";
+import type { ContentLoader, Entity, EntityContent } from "./entity";
 import { loadObj } from "./loaders/mesh.obj";
 import type { Scene } from "./scene";
 import { parseInt, stringHash } from "./stdlib";
@@ -58,9 +58,9 @@ export class Engine {
   readonly device: GPUDevice;
   readonly canvas: HTMLCanvasElement;
   readonly context: GPUCanvasContext;
-  readonly loaders: Record<FilePattern, AssetLoader>;
+  readonly loaders: Record<FilePattern, ContentLoader>;
   staged: Record<AssetID, Asset>;
-  loading: Record<RequestID, Promise<AssetDescriptor>>;
+  loading: Record<RequestID, Promise<EntityContent>>;
   passes: {
     opaque: Record<AssetID, BatchDraw>;
   };
@@ -75,7 +75,7 @@ export class Engine {
     device: GPUDevice;
     canvas: HTMLCanvasElement;
     context: GPUCanvasContext;
-    loaders?: Record<AssetID, AssetLoader>;
+    loaders?: Record<AssetID, ContentLoader>;
     shaders?: string;
   }) {
     this.device = args.device;
@@ -235,7 +235,7 @@ export class Engine {
     }));
     let opaques: Record<AssetID, { entities: Entity[]; asset: Mesh }> = {};
     for (const { entity, lod } of instances) {
-      const { id, asset } = this.request(entity.asset, lod);
+      const { id, asset } = this.request(entity.content, lod);
       switch (asset.tag) {
         case "Mesh":
           if (id in opaques) {
@@ -261,13 +261,13 @@ export class Engine {
   }
 
   request(
-    asset: AssetDescriptor,
+    content: EntityContent,
     lod: AssetLOD = 0,
   ): { id: AssetID; asset: Asset } {
-    const id = getAssetID(asset, lod);
+    const id = getAssetID(content, lod);
     if (!(id in this.staged)) {
       // Not loaded, try to load it.
-      this.staged[id] = this.loadAsset(id, asset, lod);
+      this.staged[id] = this.loadAsset(id, content, lod);
     }
     const staged = this.staged[id]!;
     if (staged.tag === "AssetLoading") {
@@ -284,45 +284,44 @@ export class Engine {
     return { id, asset: staged };
   }
 
-  loadAsset(id: AssetID, asset: AssetDescriptor, lod: AssetLOD): Asset {
-    switch (asset.tag) {
-      case "Node":
-        return asset;
-      case "AssetReference":
+  loadAsset(id: AssetID, content: EntityContent, lod: AssetLOD): Asset {
+    switch (content.tag) {
+      case "EntityEmpty":
+        return AssetEmpty();
+      case "EntityReference":
         const request = this.loading[id];
         if (request === undefined) {
           // Create a new request.
-          const loader = this.findFileLoader(asset.filename);
+          const loader = this.findFileLoader(content.filename);
           if (loader === undefined) {
             throw new Error(
               `[LibraryMesh3D.load] Could not find a loader for: ${id}`,
             );
           }
-          this.loading[id] = loader(asset.filename, lod)
-            .then((asset) => {
+          this.loading[id] = loader(content.filename, lod)
+            .then((content) => {
               delete this.loading[id];
-              return this.request(asset);
+              return this.request(content);
             })
             .catch((e) => {
               return e;
             })
             .finally(() => {});
         }
-        return { tag: "AssetLoading", id };
+        return AssetLoading(id);
 
-      case "MeshDescriptor":
-        return {
-          tag: "Mesh",
-          vertices: this.vertexBuffer.write(asset.vertices),
-          indices: this.indexBuffer.write(asset.indices),
-        };
+      case "EntityMesh":
+        return Mesh({
+          vertices: this.vertexBuffer.write(content.vertices),
+          indices: this.indexBuffer.write(content.indices),
+        });
 
-      case "AssetError":
-        return asset;
+      // case "AssetError":
+      //   return content;
 
       default:
         throw new Error(
-          `Engine.loadAsset: not implemented: ${(asset as Asset).tag}`,
+          `Engine.loadAsset: not implemented: ${(content as EntityContent).tag}`,
         );
     }
   }
@@ -331,7 +330,7 @@ export class Engine {
     throw new Error("TODO: LibraryMesh3D.free");
   }
 
-  findFileLoader(id: AssetID): AssetLoader | undefined {
+  findFileLoader(id: AssetID): ContentLoader | undefined {
     // 1) Try exact match.
     const loader = this.loaders[id];
     if (loader !== undefined) {
@@ -362,8 +361,8 @@ export class Engine {
   }
 }
 
-export function getAssetID(asset: AssetDescriptor, lod: AssetLOD): AssetID {
-  return `${getAssetIDBase(asset)}:${lod}`;
+export function getAssetID(content: EntityContent, lod: AssetLOD): AssetID {
+  return `${getAssetIDBase(content)}:${lod}`;
 }
 
 function splitAssetID(id: AssetID): { base: string; lod: AssetLOD } {
@@ -377,28 +376,30 @@ function isLowerLOD(id1: AssetID, id2: AssetID): boolean {
   return x.base === y.base && x.lod < y.lod;
 }
 
-function getAssetIDBase(asset: AssetDescriptor) {
-  switch (asset.tag) {
-    case "Node":
-      return "Node";
-    case "AssetReference":
-      return asset.filename;
-    case "MeshDescriptor": {
-      if (asset.id !== undefined) {
-        return asset.id;
+function getAssetIDBase(content: EntityContent) {
+  switch (content.tag) {
+    case "EntityEmpty":
+      return "<empty>";
+    case "EntityReference":
+      return content.filename;
+    case "EntityMesh": {
+      if (content.id !== undefined) {
+        return content.id;
       }
-      const hash = stringHash(JSON.stringify([asset.vertices, asset.indices]));
+      const hash = stringHash(
+        JSON.stringify([content.vertices, content.indices]),
+      );
       return `Mesh<${hash}>`;
     }
-    case "AssetError":
-      return `AssetError<${asset.id}:${asset.lod}>`;
+    // case "AssetError":
+    //   return `AssetError<${content.id}:${content.lod}>`;
     // case "CameraDescriptor": {
     //   const hash = JSON.stringify([...asset.projection]);
     //   return `Camera<${hash}>`;
     // }
     default:
       throw new Error(
-        `engine.getAssetIDBase: not implemented ${(asset as AssetDescriptor).tag}`,
+        `engine.getAssetIDBase: not implemented ${(content as EntityContent).tag}`,
       );
   }
 }

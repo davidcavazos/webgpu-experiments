@@ -3,6 +3,7 @@ import { Engine } from "./lib/engine";
 import * as io from "./lib/io";
 import { Scene } from "./lib/scene";
 import { start, type InitState as StateInit, type State } from "./lib/start";
+import { EntityEmpty, EntityMesh } from "./lib/entity";
 
 const canvas: HTMLCanvasElement = document.querySelector("#canvas")!;
 
@@ -54,13 +55,12 @@ async function init(engine: Engine): Promise<StateInit<App>> {
   // Build/load the initial scene.
   const scene = new Scene({
     camera: {
-      asset: { tag: "Node" },
+      content: EntityEmpty(),
       transform: mat4.translation([0, 0, 0]),
       entities: {},
     },
     triangle1: {
-      asset: {
-        tag: "MeshDescriptor",
+      content: EntityMesh({
         id: "triangle-mesh",
         vertices: [
           [0, 0, 0],
@@ -68,17 +68,12 @@ async function init(engine: Engine): Promise<StateInit<App>> {
           [0, 1, 0],
         ],
         indices: [0, 1, 2],
-      },
+      }),
       transform: mat4.translation([0, 0, -4]),
       entities: {},
     },
     triangle2: {
-      asset: {
-        tag: "MeshDescriptor",
-        id: "triangle-mesh",
-        vertices: [],
-        indices: [],
-      },
+      content: EntityMesh({ id: "triangle-mesh" }),
       // transform: mat4.scale(
       //   mat4.translate(mat4.identity(), [-0.5, -1, -4]),
       //   [0.5, 0.5, 0.5],

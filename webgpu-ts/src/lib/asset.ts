@@ -4,45 +4,41 @@ import type { VertexBufferSlot } from "./assets/vertexBuffer";
 export type AssetID = string;
 export type AssetLOD = number;
 export type RequestID = string;
-export type AssetLoader = (
-  id: AssetID,
-  lod: AssetLOD,
-) => Promise<AssetDescriptor>;
 
-export type Node = {
-  tag: "Node";
+export type AssetEmpty = {
+  tag: "AssetEmpty";
 };
+export const AssetEmpty = (): Asset => ({ tag: "AssetEmpty" });
+
 export type AssetError = {
   tag: "AssetError";
   id: AssetID;
   lod: AssetLOD;
   reason: string;
 };
-
-export type AssetReference = {
-  tag: "AssetReference";
-  filename: string;
-};
-export type MeshDescriptor = {
-  tag: "MeshDescriptor";
-  id?: AssetID;
-  // TODO: lods: {AssetLOD: {vertices, indices}}
-  vertices: number[][];
-  indices: number[]; // TODO: faces: number[][]
-};
-export type AssetDescriptor =
-  | Node
-  | AssetReference
-  | MeshDescriptor
-  | AssetError;
+export const AssetError = (args: {
+  id: AssetID;
+  lod: AssetLOD;
+  reason: string;
+}): Asset => ({ tag: "AssetError", ...args });
 
 export type AssetLoading = {
   tag: "AssetLoading";
   id: RequestID;
 };
+export const AssetLoading = (id: RequestID): Asset => ({
+  tag: "AssetLoading",
+  id,
+});
+
 export type Mesh = {
   tag: "Mesh";
   vertices: VertexBufferSlot;
   indices: IndexBufferSlot;
 };
-export type Asset = Node | AssetLoading | Mesh | AssetError;
+export const Mesh = (args: {
+  vertices: VertexBufferSlot;
+  indices: IndexBufferSlot;
+}): Asset => ({ tag: "Mesh", ...args });
+
+export type Asset = AssetEmpty | AssetLoading | Mesh | AssetError;

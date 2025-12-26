@@ -62,7 +62,7 @@ export async function start<a>(args: {
     scene: initialState.scene,
     app: initialState.app,
     defaultCamera: {
-      asset: { tag: "Node" },
+      content: { tag: "Node" },
       transform: mat4.identity(),
       entities: {},
     },
