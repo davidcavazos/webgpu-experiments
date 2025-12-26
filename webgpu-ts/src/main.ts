@@ -1,7 +1,7 @@
 import { mat4 } from "wgpu-matrix";
 import { Engine } from "./lib/engine";
 import * as io from "./lib/io";
-import { getPosition, Scene } from "./lib/scene";
+import { Scene } from "./lib/scene";
 import { start, type InitState as StateInit, type State } from "./lib/start";
 
 const canvas: HTMLCanvasElement = document.querySelector("#canvas")!;

@@ -1,7 +1,8 @@
 import { mat4 } from "wgpu-matrix";
 import type { Globals } from "./assets/globals";
 import { Engine } from "./engine";
-import { type Entity, type EntityID, type Scene } from "./scene";
+import { type Scene } from "./scene";
+import type { Entity, EntityID } from "./entity";
 
 export interface InitState<a> {
   scene: Scene;

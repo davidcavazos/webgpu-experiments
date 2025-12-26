@@ -1,4 +1,4 @@
-import type { Entity } from "../scene";
+import type { Entity } from "../entity";
 import { toFixedLength } from "../stdlib";
 import { BufferBase } from "./bufferBase";
 
