@@ -1,4 +1,4 @@
-import { mat4 } from "../mat4";
+import { mat4 } from "wgpu-matrix";
 
 export class Globals {
   static readonly viewProjectionSize = 4 * 4 * Float32Array.BYTES_PER_ELEMENT;

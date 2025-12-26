@@ -1,11 +1,11 @@
+import { vec3 } from "wgpu-matrix";
 import type {
   AssetDescriptor,
   AssetID,
   AssetLOD,
   MeshDescriptor,
-} from "../engine";
+} from "../asset";
 import { toFixedLength } from "../stdlib";
-import { vec3 } from "../vec3";
 
 export interface MeshObj {
   positions: number[][];
@@ -112,7 +112,7 @@ export function objToMesh(id: AssetID, obj: MeshObj): MeshDescriptor {
         ? obj.normals[normId]!
         : // TODO: compute flat faces, it currently assigns normals to positions
           //  Good for debug visualizing, but not a good default overall.
-          vec3.normalize(position);
+          [...vec3.normalize(position)];
     // If UVs are udefined, default to (0, 0)
     const uvs = uvId < obj.uvs.length ? obj.uvs[uvId]! : [];
     return [

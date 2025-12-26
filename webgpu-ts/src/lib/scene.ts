@@ -1,84 +1,13 @@
+import { mat4, type Mat4 } from "wgpu-matrix";
 import type { AssetDescriptor, AssetID } from "./asset";
-import { mat4 } from "./mat4";
-import { Just, None, type Maybe } from "./stdlib";
-import { Transform } from "./transform";
 
 export type EntityID = string;
 
 export type Entity = {
   asset: AssetDescriptor;
-  transform: Transform;
+  transform: Mat4;
   entities: Record<EntityID, Entity>;
 };
-
-export function entity(args: {
-  asset: AssetDescriptor;
-  transform?: Transform;
-  entities?: Record<EntityID, Entity>;
-}): Entity {
-  return {
-    asset: args.asset,
-    transform: args.transform ?? new Transform(),
-    entities: args.entities ?? {},
-  };
-}
-
-export function ref(args: {
-  filename: string;
-  transform?: Transform;
-  entities?: Record<EntityID, Entity>;
-}): Entity {
-  return entity({
-    asset: { tag: "AssetReference", filename: args.filename },
-    transform: args.transform,
-    entities: args.entities,
-  });
-}
-
-export function mesh(args?: {
-  id?: AssetID;
-  vertices?: number[][];
-  indices?: number[];
-  transform?: Transform;
-  entities?: Record<EntityID, Entity>;
-}): Entity {
-  return entity({
-    asset: {
-      tag: "MeshDescriptor",
-      id: args?.id,
-      vertices: args?.vertices ?? [],
-      indices: args?.indices ?? [],
-    },
-    transform: args?.transform,
-    entities: args?.entities,
-  });
-}
-
-// export function camera(args: {
-//   projection: Float32Array;
-//   transform?: Float32Array;
-//   entities?: Record<EntityID, Entity>;
-// }) {
-//   return entity({
-//     asset: {
-//       tag: "CameraDescriptor",
-//       projection: args?.projection,
-//     },
-//     transform: args.transform,
-//     entities: args.entities,
-//   });
-// }
-
-export function camera(args?: {
-  transform?: Transform;
-  entities?: Record<EntityID, Entity>;
-}) {
-  return entity({
-    asset: { tag: "Node" },
-    transform: args?.transform,
-    entities: args?.entities,
-  });
-}
 
 export class Scene {
   entities: Record<EntityID, Entity>;

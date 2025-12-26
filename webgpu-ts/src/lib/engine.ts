@@ -12,8 +12,7 @@ import { Globals } from "./assets/globals";
 import { IndexBuffer, type IndexBufferSlot } from "./assets/indexBuffer";
 import { VertexBuffer, type VertexBufferSlot } from "./assets/vertexBuffer";
 import { loadObj } from "./loaders/mesh.obj";
-import { mat4 } from "./mat4";
-import type { Entity, EntityID, Scene } from "./scene";
+import type { Entity, Scene } from "./scene";
 import { parseInt, stringHash } from "./stdlib";
 
 // As a proof of concept, this only supports loading, not unloading.
