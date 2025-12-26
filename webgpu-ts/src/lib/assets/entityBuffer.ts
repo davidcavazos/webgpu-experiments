@@ -30,7 +30,7 @@ export class EntityBuffer extends BufferBase {
 
   write(entities: Entity[]): EntityBufferSlot {
     const data = entities.flatMap((e) =>
-      toFixedLength([...e.transform], 4 * 4, 0),
+      toFixedLength([...e.matrix], 4 * 4, 0),
     );
     const slot = this.writeFloat32(data);
     if (slot.chunk !== 0) {

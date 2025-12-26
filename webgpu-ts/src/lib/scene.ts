@@ -9,12 +9,12 @@ export class Scene {
     this.entities = entities ?? {};
 
     // const eye = [1, 2, 5];
-    const eye = [0, 0, 10];
-    const target = [0, 0, 0];
-    const up = [0, 1, 0];
+    const eye = vec3.create(0, 0, 10);
+    const target = vec3.create(0, 0, 0);
+    const up = vec3.create(0, 1, 0);
     this.defaultCamera = {
-      content: Camera({ focusDistance: vec3.distance(eye, target) }),
-      transform: mat4.lookAt(eye, target, up),
+      content: Camera(),
+      matrix: mat4.lookAt(eye, target, up),
       entities: {},
     };
   }
