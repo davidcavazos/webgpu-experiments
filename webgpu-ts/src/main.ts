@@ -95,12 +95,12 @@ async function init(engine: Engine): Promise<StateInit<App>> {
 
 function resize(state: State<App>, width: number, height: number): State<App> {
   const { camera } = state.scene.findCamera(["camera"]);
-  const fieldOfView = 100;
-  const aspect = width / height;
-  const zNear = 1;
-  const zFar = 2000;
-  const projection = mat4.perspective(fieldOfView, aspect, zNear, zFar);
-  camera.content.projection = projection;
+  camera.content.projection = mat4.perspective(
+    100, // fieldOfView
+    width / height, // aspect
+    1, // zNear
+    2000, // zFar
+  );
   return state;
 }
 
