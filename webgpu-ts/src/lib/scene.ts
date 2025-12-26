@@ -1,3 +1,4 @@
+import type { Camera } from "./content";
 import type { Entity, EntityID } from "./entity";
 
 export class Scene {
@@ -8,6 +9,14 @@ export class Scene {
 
   find(path: EntityID[]): Entity | undefined {
     return $find(path, this.entities);
+  }
+
+  findCamera(path: EntityID[]): Entity<Camera> | undefined {
+    const entity = this.find(path);
+    if (entity?.content.tag === "Camera") {
+      return entity as Entity<Camera>;
+    }
+    return undefined;
   }
 }
 

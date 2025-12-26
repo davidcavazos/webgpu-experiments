@@ -3,6 +3,7 @@ import type { Globals } from "./assets/globals";
 import { Engine } from "./engine";
 import { type Scene } from "./scene";
 import type { Entity, EntityID } from "./entity";
+import { Camera } from "./content";
 
 export interface InitState<a> {
   scene: Scene;
@@ -13,7 +14,7 @@ export interface State<a> {
   readonly frameNumber: number;
   readonly deltaTime: number;
   readonly now: number;
-  defaultCamera: Entity;
+  defaultCamera: Entity<Camera>;
   globals: Globals;
   scene: Scene;
   app: a;
@@ -21,8 +22,8 @@ export interface State<a> {
 
 export async function start<a>(args: {
   canvas: HTMLCanvasElement;
-  projection: (width: number, height: number) => Float32Array;
   init: (engine: Engine) => Promise<InitState<a>>;
+  resize?: (state: State<a>, width: number, height: number) => State<a>;
   update?: (state: State<a>) => State<a>;
   updateAfterDraw?: (state: State<a>) => State<a>;
   camera?: EntityID;
@@ -62,7 +63,7 @@ export async function start<a>(args: {
     scene: initialState.scene,
     app: initialState.app,
     defaultCamera: {
-      content: { tag: "Node" },
+      content: Camera(),
       transform: mat4.identity(),
       entities: {},
     },
@@ -72,9 +73,9 @@ export async function start<a>(args: {
     now: performance.now(),
   };
 
-  engine.globals.projection.set(
-    args.projection(args.canvas.width, args.canvas.height),
-  );
+  if (args.resize) {
+    state = args.resize(state, args.canvas.width, args.canvas.height);
+  }
   function render(now: number) {
     if (now === state.now) {
       return;
@@ -130,9 +131,9 @@ export async function start<a>(args: {
         1,
         Math.min(height, device.limits.maxTextureDimension2D),
       );
-      engine.globals.projection.set(
-        args.projection(args.canvas.width, args.canvas.height),
-      );
+      if (args.resize) {
+        state = args.resize(state, args.canvas.width, args.canvas.height);
+      }
       requestAnimationFrame(render);
     }
   });

@@ -8,13 +8,13 @@ export type RequestID = string;
 export type EmptyAsset = {
   tag: "EmptyAsset";
 };
-export const EmptyAsset = (): Asset => ({ tag: "EmptyAsset" });
+export const EmptyAsset = (): EmptyAsset => ({ tag: "EmptyAsset" });
 
 export type LoadingAsset = {
   tag: "LoadingAsset";
   id: RequestID;
 };
-export const LoadingAsset = (id: RequestID): Asset => ({
+export const LoadingAsset = (id: RequestID): LoadingAsset => ({
   tag: "LoadingAsset",
   id,
 });
@@ -27,7 +27,7 @@ export type MeshAsset = {
 export const MeshAsset = (args: {
   vertices: VertexBufferSlot;
   indices: IndexBufferSlot;
-}): Asset => ({ tag: "MeshAsset", ...args });
+}): MeshAsset => ({ tag: "MeshAsset", ...args });
 
 export type AssetError = {
   tag: "AssetError";
@@ -39,7 +39,7 @@ export const AssetError = (args: {
   id: AssetID;
   lod: AssetLOD;
   reason: string;
-}): Asset => ({ tag: "AssetError", ...args });
+}): AssetError => ({ tag: "AssetError", ...args });
 
 export type Asset = EmptyAsset | LoadingAsset | MeshAsset | AssetError;
 

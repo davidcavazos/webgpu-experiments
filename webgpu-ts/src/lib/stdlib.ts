@@ -30,7 +30,7 @@ export function clamp(x: number, min: number, max: number): number {
   return Math.max(Math.min(x, max), min);
 }
 
-export function stringHash(str: string): string {
+export function hashString(str: string): string {
   let hash = 0;
   for (let ch of str) {
     // Using bitwise shift for performance: hash * 31 + char
@@ -40,6 +40,13 @@ export function stringHash(str: string): string {
   }
   // Return as a positive integer string for simplicity
   return (hash >>> 0).toString(16);
+}
+
+export function hashRecord(record: Record<string, any>): string {
+  const sortedObj = Object.fromEntries(
+    Object.entries(record).sort(([key1], [key2]) => key1.localeCompare(key2)),
+  );
+  return hashString(JSON.stringify(sortedObj));
 }
 
 export function wait(ms: number): Promise<void> {

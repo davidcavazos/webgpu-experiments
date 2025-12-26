@@ -12,10 +12,11 @@ import { EntityBuffer, type EntityBufferSlot } from "./assets/entityBuffer";
 import { Globals } from "./assets/globals";
 import { IndexBuffer, type IndexBufferSlot } from "./assets/indexBuffer";
 import { VertexBuffer, type VertexBufferSlot } from "./assets/vertexBuffer";
-import type { ContentLoader, Entity, EntityContent } from "./entity";
+import type { Content, ContentLoader } from "./content";
+import type { Entity } from "./entity";
 import { loadObj } from "./loaders/mesh.obj";
 import type { Scene } from "./scene";
-import { parseInt, stringHash } from "./stdlib";
+import { parseInt, hashString, hashRecord } from "./stdlib";
 
 // As a proof of concept, this only supports loading, not unloading.
 // This means the entire scene must fit into GPU memory.
@@ -61,7 +62,7 @@ export class Engine {
   readonly context: GPUCanvasContext;
   readonly loaders: Record<FilePattern, ContentLoader>;
   staged: Record<AssetID, Asset>;
-  loading: Record<RequestID, Promise<EntityContent>>;
+  loading: Record<RequestID, Promise<Content>>;
   passes: {
     opaque: Record<AssetID, BatchDraw>;
   };
@@ -261,10 +262,7 @@ export class Engine {
     };
   }
 
-  request(
-    content: EntityContent,
-    lod: AssetLOD = 0,
-  ): { id: AssetID; asset: Asset } {
+  request(content: Content, lod: AssetLOD = 0): { id: AssetID; asset: Asset } {
     const id = getAssetID(content, lod);
     if (!(id in this.staged)) {
       // Not loaded, try to load it.
@@ -285,10 +283,11 @@ export class Engine {
     return { id, asset: staged };
   }
 
-  loadAsset(id: AssetID, content: EntityContent, lod: AssetLOD): Asset {
+  loadAsset(id: AssetID, content: Content, lod: AssetLOD): Asset {
     switch (content.tag) {
       case "Empty":
         return EmptyAsset();
+
       case "Reference":
         const request = this.loading[id];
         if (request === undefined) {
@@ -317,12 +316,12 @@ export class Engine {
           indices: this.indexBuffer.write(content.indices),
         });
 
-      // case "AssetError":
-      //   return content;
+      case "Camera":
+        return EmptyAsset();
 
       default:
         throw new Error(
-          `Engine.loadAsset: not implemented: ${(content as EntityContent).tag}`,
+          `Engine.loadAsset: not implemented: ${(content as Content).tag}`,
         );
     }
   }
@@ -362,7 +361,7 @@ export class Engine {
   }
 }
 
-export function getAssetID(content: EntityContent, lod: AssetLOD): AssetID {
+export function getAssetID(content: Content, lod: AssetLOD): AssetID {
   return `${getAssetIDBase(content)}:${lod}`;
 }
 
@@ -377,21 +376,19 @@ function isLowerLOD(id1: AssetID, id2: AssetID): boolean {
   return x.base === y.base && x.lod < y.lod;
 }
 
-function getAssetIDBase(content: EntityContent) {
+function getAssetIDBase(content: Content) {
   switch (content.tag) {
     case "Empty":
       return "<Empty>";
     case "Reference":
       return content.filename;
-    case "Mesh": {
+    case "Mesh":
       if (content.id !== undefined) {
         return content.id;
       }
-      const hash = stringHash(
-        JSON.stringify([content.vertices, content.indices]),
-      );
-      return `Mesh<${hash}>`;
-    }
+      return `Mesh<${hashRecord(content)}>`;
+    case "Camera":
+      return `Camera<${hashRecord(content)}>`;
     // case "AssetError":
     //   return `AssetError<${content.id}:${content.lod}>`;
     // case "CameraDescriptor": {
@@ -400,7 +397,7 @@ function getAssetIDBase(content: EntityContent) {
     // }
     default:
       throw new Error(
-        `engine.getAssetIDBase: not implemented ${(content as EntityContent).tag}`,
+        `engine.getAssetIDBase: not implemented ${(content as Content).tag}`,
       );
   }
 }

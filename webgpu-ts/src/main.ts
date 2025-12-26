@@ -3,7 +3,7 @@ import { Engine } from "./lib/engine";
 import * as io from "./lib/io";
 import { Scene } from "./lib/scene";
 import { start, type InitState as StateInit, type State } from "./lib/start";
-import { Empty, Mesh } from "./lib/entity";
+import { Camera, Mesh } from "./lib/content";
 
 const canvas: HTMLCanvasElement = document.querySelector("#canvas")!;
 
@@ -17,14 +17,6 @@ interface App {
     drawStartTime: number;
     updateElapsed: number;
   };
-}
-
-function projection(width: number, height: number) {
-  const fieldOfView = 100;
-  const aspect = width / height;
-  const zNear = 1;
-  const zFar = 2000;
-  return mat4.perspective(fieldOfView, aspect, zNear, zFar);
 }
 
 async function init(engine: Engine): Promise<StateInit<App>> {
@@ -55,8 +47,8 @@ async function init(engine: Engine): Promise<StateInit<App>> {
   // Build/load the initial scene.
   const scene = new Scene({
     camera: {
-      content: Empty(),
-      transform: mat4.translation([0, 0, 0]),
+      content: Camera(),
+      transform: mat4.identity(),
       entities: {},
     },
     triangle1: {
@@ -101,11 +93,23 @@ async function init(engine: Engine): Promise<StateInit<App>> {
   };
 }
 
+function resize(state: State<App>, width: number, height: number): State<App> {
+  const camera = state.scene.find(["camera"]) ?? state.defaultCamera;
+  if (camera.content.tag === "Camera") {
+    const fieldOfView = 100;
+    const aspect = width / height;
+    const zNear = 1;
+    const zFar = 2000;
+    const projection = mat4.perspective(fieldOfView, aspect, zNear, zFar);
+    camera.content.projection = projection;
+  }
+  return state;
+}
+
 function update(state: State<App>): State<App> {
   const updateStart = performance.now();
 
-  // let ref camera = state.scene.find(["camera"]) or state.default-camera
-  const camera = state.scene.find(["camera"]) ?? state.defaultCamera;
+  const camera = state.scene.findCamera(["camera"]) ?? state.defaultCamera;
 
   const input = state.app.input;
   const mouse = input.mouse.poll();
@@ -141,7 +145,7 @@ function update(state: State<App>): State<App> {
   }
 
   mat4.multiply(
-    state.globals.projection,
+    camera.content.projection,
     camera.transform,
     state.globals.viewProjection,
   );
@@ -171,4 +175,4 @@ function updateAfterDraw(state: State<App>): State<App> {
   return state;
 }
 
-start({ canvas, projection, init, update, updateAfterDraw });
+start({ canvas, init, update, updateAfterDraw, resize });
