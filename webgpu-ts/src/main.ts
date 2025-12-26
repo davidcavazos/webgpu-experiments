@@ -1,7 +1,7 @@
 import { mat4 } from "wgpu-matrix";
 import { Engine } from "./lib/engine";
 import * as io from "./lib/io";
-import { Scene } from "./lib/scene";
+import { getPosition, Scene } from "./lib/scene";
 import { start, type InitState as StateInit, type State } from "./lib/start";
 
 const canvas: HTMLCanvasElement = document.querySelector("#canvas")!;
@@ -119,30 +119,26 @@ function update(state: State<App>): State<App> {
     if (keyboard.shift.held) {
       // Shift + scroll -> pan camera
       const speed = 0.5 * state.deltaTime;
-      camera.transform = mat4.translate(camera.transform, [
-        mouse.scroll.x * speed,
-        -mouse.scroll.y * speed,
-        0,
-      ]);
+      const delta = [mouse.scroll.x * speed, -mouse.scroll.y * speed, 0];
+      camera.transform = mat4.translate(camera.transform, delta);
     } else if (keyboard.alt.held) {
       // Alt + scroll -> rotate camera
       const speed = 0.2 * state.deltaTime;
-      // mat4.rotateZ(view, mouse.scroll.z * speed, view);
-      // camera.transform = camera.transform.rotate(
-      //   mouse.scroll.x * speed,
-      //   mouse.scroll.y * speed,
-      //   0,
-      // );
+      // const eye = getPosition(camera);
+      // const target = mat4.translate(camera.transform, [
+      //   mouse.scroll.x,
+      //   mouse.scroll.y,
+      //   speed,
+      // ]);
+      // const up = [0, 1, 0];
+      // camera.transform = mat4.lookAt(eye, target, up);
       console.log("TODO: rotate");
     } else if (keyboard.ctrl.held || keyboard.meta.held) {
       // Ctrl + scroll -> zoom camera
       // Meta + scroll -> zoom camera
       const speed = 1.5 * state.deltaTime;
-      camera.transform = mat4.translate(camera.transform, [
-        0,
-        0,
-        (mouse.scroll.x - mouse.scroll.y) * speed,
-      ]);
+      const delta = [0, 0, (mouse.scroll.x - mouse.scroll.y) * speed];
+      camera.transform = mat4.translate(camera.transform, delta);
     } else {
       // scroll -> orbit camera
       console.log("TODO: orbit");
