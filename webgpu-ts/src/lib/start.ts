@@ -1,9 +1,7 @@
-import { mat4 } from "wgpu-matrix";
 import type { Globals } from "./assets/globals";
 import { Engine } from "./engine";
 import { type Scene } from "./scene";
-import type { Entity, EntityID } from "./entity";
-import { Camera } from "./content";
+import type { EntityID } from "./entity";
 
 export interface InitState<a> {
   scene: Scene;
@@ -14,7 +12,6 @@ export interface State<a> {
   readonly frameNumber: number;
   readonly deltaTime: number;
   readonly now: number;
-  defaultCamera: Entity<Camera>;
   globals: Globals;
   scene: Scene;
   app: a;
@@ -62,11 +59,6 @@ export async function start<a>(args: {
   let state: State<a> = {
     scene: initialState.scene,
     app: initialState.app,
-    defaultCamera: {
-      content: Camera(),
-      transform: mat4.identity(),
-      entities: {},
-    },
     globals: engine.globals,
     frameNumber: 0,
     deltaTime: 0,
