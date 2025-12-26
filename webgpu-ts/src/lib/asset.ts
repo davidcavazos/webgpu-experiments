@@ -5,10 +5,29 @@ export type AssetID = string;
 export type AssetLOD = number;
 export type RequestID = string;
 
-export type AssetEmpty = {
-  tag: "AssetEmpty";
+export type EmptyAsset = {
+  tag: "EmptyAsset";
 };
-export const AssetEmpty = (): Asset => ({ tag: "AssetEmpty" });
+export const EmptyAsset = (): Asset => ({ tag: "EmptyAsset" });
+
+export type LoadingAsset = {
+  tag: "LoadingAsset";
+  id: RequestID;
+};
+export const LoadingAsset = (id: RequestID): Asset => ({
+  tag: "LoadingAsset",
+  id,
+});
+
+export type MeshAsset = {
+  tag: "MeshAsset";
+  vertices: VertexBufferSlot;
+  indices: IndexBufferSlot;
+};
+export const MeshAsset = (args: {
+  vertices: VertexBufferSlot;
+  indices: IndexBufferSlot;
+}): Asset => ({ tag: "MeshAsset", ...args });
 
 export type AssetError = {
   tag: "AssetError";
@@ -22,23 +41,8 @@ export const AssetError = (args: {
   reason: string;
 }): Asset => ({ tag: "AssetError", ...args });
 
-export type AssetLoading = {
-  tag: "AssetLoading";
-  id: RequestID;
-};
-export const AssetLoading = (id: RequestID): Asset => ({
-  tag: "AssetLoading",
-  id,
-});
+export type Asset = EmptyAsset | LoadingAsset | MeshAsset | AssetError;
 
-export type Mesh = {
-  tag: "Mesh";
-  vertices: VertexBufferSlot;
-  indices: IndexBufferSlot;
-};
-export const Mesh = (args: {
-  vertices: VertexBufferSlot;
-  indices: IndexBufferSlot;
-}): Asset => ({ tag: "Mesh", ...args });
-
-export type Asset = AssetEmpty | AssetLoading | Mesh | AssetError;
+export function isLoading(asset: Asset): boolean {
+  return asset.tag === "LoadingAsset";
+}

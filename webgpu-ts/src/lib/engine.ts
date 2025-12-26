@@ -1,7 +1,8 @@
 import {
-  AssetEmpty,
-  AssetLoading,
-  Mesh,
+  EmptyAsset,
+  isLoading,
+  LoadingAsset,
+  MeshAsset,
   type Asset,
   type AssetID,
   type AssetLOD,
@@ -233,11 +234,11 @@ export class Engine {
       entity,
       lod: 0,
     }));
-    let opaques: Record<AssetID, { entities: Entity[]; asset: Mesh }> = {};
+    let opaques: Record<AssetID, { entities: Entity[]; asset: MeshAsset }> = {};
     for (const { entity, lod } of instances) {
       const { id, asset } = this.request(entity.content, lod);
       switch (asset.tag) {
-        case "Mesh":
+        case "MeshAsset":
           if (id in opaques) {
             opaques[id]?.entities.push(entity);
           } else {
@@ -270,7 +271,7 @@ export class Engine {
       this.staged[id] = this.loadAsset(id, content, lod);
     }
     const staged = this.staged[id]!;
-    if (staged.tag === "AssetLoading") {
+    if (isLoading(staged)) {
       // Still loading, try to find a lower LOD.
       const lowerAssetId = Object.keys(this.staged)
         .filter((id2) => isLowerLOD(id, id2))
@@ -286,9 +287,9 @@ export class Engine {
 
   loadAsset(id: AssetID, content: EntityContent, lod: AssetLOD): Asset {
     switch (content.tag) {
-      case "EntityEmpty":
-        return AssetEmpty();
-      case "EntityReference":
+      case "Empty":
+        return EmptyAsset();
+      case "Reference":
         const request = this.loading[id];
         if (request === undefined) {
           // Create a new request.
@@ -308,10 +309,10 @@ export class Engine {
             })
             .finally(() => {});
         }
-        return AssetLoading(id);
+        return LoadingAsset(id);
 
-      case "EntityMesh":
-        return Mesh({
+      case "Mesh":
+        return MeshAsset({
           vertices: this.vertexBuffer.write(content.vertices),
           indices: this.indexBuffer.write(content.indices),
         });
@@ -378,11 +379,11 @@ function isLowerLOD(id1: AssetID, id2: AssetID): boolean {
 
 function getAssetIDBase(content: EntityContent) {
   switch (content.tag) {
-    case "EntityEmpty":
-      return "<empty>";
-    case "EntityReference":
+    case "Empty":
+      return "<Empty>";
+    case "Reference":
       return content.filename;
-    case "EntityMesh": {
+    case "Mesh": {
       if (content.id !== undefined) {
         return content.id;
       }

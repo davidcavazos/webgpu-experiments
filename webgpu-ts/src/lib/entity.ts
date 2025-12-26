@@ -1,46 +1,51 @@
 import { vec3, type Mat4, type Vec3 } from "wgpu-matrix";
 import type { AssetID, AssetLOD } from "./asset";
 
+export type EntityID = string;
 export type ContentLoader = (
   id: AssetID,
   lod: AssetLOD,
 ) => Promise<EntityContent>;
 
-export type EntityID = string;
-
-export type EntityEmpty = {
-  tag: "EntityEmpty";
+export type Empty = {
+  tag: "Empty";
 };
-export const EntityEmpty = (): EntityContent => ({ tag: "EntityEmpty" });
+export const Empty = (): EntityContent => ({ tag: "Empty" });
 
-export type EntityReference = {
-  tag: "EntityReference";
+export type Reference = {
+  tag: "Reference";
   filename: string;
 };
-export const EntityReference = (filename: string): EntityContent => ({
-  tag: "EntityReference",
+export const Reference = (filename: string): EntityContent => ({
+  tag: "Reference",
   filename,
 });
 
-export type EntityMesh = {
-  tag: "EntityMesh";
+export type Mesh = {
+  tag: "Mesh";
   id?: AssetID;
   // TODO: lods: {AssetLOD: {vertices, indices}}
   vertices: number[][];
   indices: number[]; // TODO: faces: number[][]
 };
-export const EntityMesh = (args?: {
+export const Mesh = (args?: {
   id?: AssetID;
   vertices?: number[][];
   indices?: number[];
 }): EntityContent => ({
-  tag: "EntityMesh",
+  tag: "Mesh",
   id: args?.id,
   vertices: args?.vertices ?? [],
   indices: args?.indices ?? [],
 });
 
-export type EntityContent = EntityEmpty | EntityReference | EntityMesh;
+export type EntityCamera = {
+  projection: Mat4;
+  target: Vec3;
+  up: Vec3;
+};
+
+export type EntityContent = Empty | Reference | Mesh;
 
 export type Entity = {
   content: EntityContent;
