@@ -1,4 +1,4 @@
-import { mat4 } from "wgpu-matrix";
+import { mat4, vec3 } from "wgpu-matrix";
 import { Camera } from "./content";
 import type { Entity, EntityID } from "./entity";
 
@@ -7,9 +7,14 @@ export class Scene {
   defaultCamera: Entity<Camera>;
   constructor(entities?: Record<EntityID, Entity>) {
     this.entities = entities ?? {};
+
+    // const eye = [1, 2, 5];
+    const eye = [0, 0, 10];
+    const target = [0, 0, 0];
+    const up = [0, 1, 0];
     this.defaultCamera = {
-      content: Camera(),
-      transform: mat4.identity(),
+      content: Camera({ focusDistance: vec3.distance(eye, target) }),
+      transform: mat4.lookAt(eye, target, up),
       entities: {},
     };
   }
