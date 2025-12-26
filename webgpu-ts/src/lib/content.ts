@@ -38,18 +38,21 @@ export const Mesh = (args?: {
 export type Camera = {
   tag: "Camera";
   projection: Mat4;
-  target: Vec3;
-  up: Vec3;
+  yaw: number;
+  pitch: number;
+  roll: number;
 };
 export const Camera = (args?: {
   projection?: Mat4;
-  target?: Vec3;
-  up?: Vec3;
+  yaw?: number;
+  pitch?: number;
+  roll?: number;
 }): Camera => ({
   tag: "Camera",
   projection: args?.projection ?? mat4.identity(),
-  target: args?.target ?? vec3.create(0, 0, 1),
-  up: args?.up ?? vec3.create(0, 1, 0),
+  yaw: args?.yaw ?? 0,
+  pitch: args?.pitch ?? 0,
+  roll: args?.roll ?? 0,
 });
 
 export type Content = Empty | Reference | Mesh | Camera;

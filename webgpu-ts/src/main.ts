@@ -1,9 +1,10 @@
-import { mat4 } from "wgpu-matrix";
+import { mat4, vec3 } from "wgpu-matrix";
 import { Engine } from "./lib/engine";
 import * as io from "./lib/io";
 import { Scene } from "./lib/scene";
 import { start, type InitState as StateInit, type State } from "./lib/start";
 import { Camera, Mesh } from "./lib/content";
+import { getPosition } from "./lib/entity";
 
 const canvas: HTMLCanvasElement = document.querySelector("#canvas")!;
 
@@ -66,11 +67,7 @@ async function init(engine: Engine): Promise<StateInit<App>> {
     },
     triangle2: {
       content: Mesh({ id: "triangle-mesh" }),
-      // transform: mat4.scale(
-      //   mat4.translate(mat4.identity(), [-0.5, -1, -4]),
-      //   [0.5, 0.5, 0.5],
-      // ),
-      transform: mat4.translation([-0.5, -1, -4]), //.scale(0.5, 0.5, 0.5),
+      transform: mat4.scale(mat4.translation([-0.5, -1, -4]), [0.5, 0.5, 0.5]),
       entities: {},
     },
     // pyramid1: ref({ filename: "assets/pyramid.obj" }),
@@ -120,16 +117,12 @@ function update(state: State<App>): State<App> {
       camera.transform = mat4.translate(camera.transform, delta);
     } else if (keyboard.alt.held) {
       // Alt + scroll -> rotate camera
-      const speed = 0.2 * state.deltaTime;
-      // const eye = getPosition(camera);
-      // const target = mat4.translate(camera.transform, [
-      //   mouse.scroll.x,
-      //   mouse.scroll.y,
-      //   speed,
-      // ]);
-      // const up = [0, 1, 0];
-      // camera.transform = mat4.lookAt(eye, target, up);
-      console.log("TODO: rotate");
+      const speed = 0.5 * state.deltaTime;
+      camera.content.yaw += mouse.scroll.x * speed;
+      camera.content.pitch += mouse.scroll.y * speed;
+      camera.transform = mat4.translation(getPosition(camera));
+      camera.transform = mat4.rotateX(camera.transform, camera.content.pitch);
+      camera.transform = mat4.rotateY(camera.transform, camera.content.yaw);
     } else if (keyboard.ctrl.held || keyboard.meta.held) {
       // Ctrl + scroll -> zoom camera
       // Meta + scroll -> zoom camera
