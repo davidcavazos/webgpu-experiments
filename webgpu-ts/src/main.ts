@@ -4,18 +4,20 @@ import * as io from "./lib/io";
 import { Scene } from "./lib/scene";
 import { start, type InitState as StateInit, type State } from "./lib/start";
 import { Camera, Mesh } from "./lib/content";
-import { getPosition } from "./lib/entity";
+import { getPosition, setPosition } from "./lib/entity";
+import { utils } from "wgpu-matrix";
+import { clamp } from "./lib/stdlib";
+
+const MAX_PITCH = utils.degToRad(89.5);
+const TWO_PI = 2 * Math.PI;
 
 const canvas: HTMLCanvasElement = document.querySelector("#canvas")!;
 
 interface App {
+  cursor: Vec3;
   input: {
     mouse: io.Mouse;
     keyboard: io.Keyboard;
-  };
-  orbit?: {
-    target: Vec3;
-    radius: number;
   };
   metrics: {
     infoHtmlElement: Element;
@@ -82,6 +84,7 @@ async function init(engine: Engine): Promise<StateInit<App>> {
   return {
     scene,
     app: {
+      cursor: vec3.create(0, 1, 0),
       input: {
         mouse: new io.Mouse(),
         keyboard: new io.Keyboard(),
@@ -120,45 +123,55 @@ function update(state: State<App>): State<App> {
       const speed = 0.5 * state.deltaTime;
       const delta = [mouse.scroll.x * speed, -mouse.scroll.y * speed, 0];
       camera.matrix = mat4.translate(camera.matrix, delta);
-      state.app.orbit = undefined;
-    } else if (keyboard.alt.held) {
-      // Alt + scroll -> rotate camera
-      const speed = 0.5 * state.deltaTime;
-      camera.content.yaw += mouse.scroll.x * speed;
-      camera.content.pitch += mouse.scroll.y * speed;
-      camera.matrix = mat4.translation(getPosition(camera.matrix));
-      camera.matrix = mat4.rotateX(camera.matrix, camera.content.pitch);
-      camera.matrix = mat4.rotateY(camera.matrix, camera.content.yaw);
-      state.app.orbit = undefined;
     } else if (keyboard.ctrl.held || keyboard.meta.held) {
       // Ctrl + scroll -> zoom camera
       // Meta + scroll -> zoom camera
       const speed = 1.5 * state.deltaTime;
       const delta = [0, 0, (mouse.scroll.x - mouse.scroll.y) * speed];
       camera.matrix = mat4.translate(camera.matrix, delta);
-      state.app.orbit = undefined;
+    } else if (keyboard.alt.held) {
+      // Alt + scroll -> rotate camera
+      const speed = 0.5 * state.deltaTime;
+      const position = getPosition(camera.matrix);
+      // const radius = vec3.len(position);
+      camera.content.yaw =
+        (camera.content.yaw + mouse.scroll.x * speed) % TWO_PI;
+      camera.content.pitch = clamp(
+        camera.content.pitch + mouse.scroll.y * speed,
+        MAX_PITCH,
+        -MAX_PITCH,
+      );
+      let matrix = mat4.identity();
+      matrix = mat4.translate(matrix, position);
+      matrix = mat4.rotateX(matrix, camera.content.pitch);
+      matrix = mat4.rotateY(matrix, camera.content.yaw);
+      // camera.matrix = mat4.translate(camera.matrix, [0, 0, -radius]);
+      camera.matrix = matrix;
     } else {
       // scroll -> orbit camera
       const speed = 0.5 * state.deltaTime;
-      const target =
-        state.app.orbit?.target ??
-        getPosition(mat4.translate(camera.matrix, [0, 0, 10]));
-      const radius =
-        state.app.orbit?.radius ??
-        vec3.dist(getPosition(camera.matrix), target);
-      state.app.orbit ??= { target, radius };
-      camera.content.yaw += mouse.scroll.x * speed;
-      camera.content.pitch += mouse.scroll.y * speed;
-      camera.matrix = mat4.translation(target);
-      camera.matrix = mat4.rotateX(camera.matrix, camera.content.pitch);
-      camera.matrix = mat4.rotateY(camera.matrix, camera.content.yaw);
-      camera.matrix = mat4.translate(camera.matrix, [0, 0, radius]);
-      console.log(vec3.distance(getPosition(camera.matrix), target));
-      camera.matrix = mat4.lookAt(
-        getPosition(camera.matrix), // eye
-        target, // target
-        [0, 1, 0], // up
+      const position = getPosition(camera.matrix);
+      const pivot = state.app.cursor;
+      // const radius = vec3.distance(position, pivot);
+      const radius = 10; // TODO: remove this, calculate actual distance
+      // TODO: calculate offset from dot product of camera direction and pivot
+      // - Note that camera position should be the origin
+      // - What should be the length of the camera direction? radius?
+      // const offset = vec3.subtract(position, pivot);
+      camera.content.yaw =
+        (camera.content.yaw + mouse.scroll.x * speed) % TWO_PI;
+      camera.content.pitch = clamp(
+        camera.content.pitch + mouse.scroll.y * speed,
+        MAX_PITCH,
+        -MAX_PITCH,
       );
+      let matrix = mat4.identity();
+      // matrix = mat4.translate(matrix, offset);
+      matrix = mat4.translate(matrix, [0, 0, -radius]);
+      matrix = mat4.rotateX(matrix, camera.content.pitch);
+      matrix = mat4.rotateY(matrix, camera.content.yaw);
+      matrix = mat4.translate(matrix, pivot);
+      camera.matrix = matrix;
     }
   }
 

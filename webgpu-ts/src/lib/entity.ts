@@ -15,3 +15,7 @@ export function getPosition(transform: Mat4): Vec3 {
     transform[14], // (2, 3)
   );
 }
+
+export function setPosition(transform: Mat4, pos: Vec3) {
+  transform.set(pos, 12);
+}

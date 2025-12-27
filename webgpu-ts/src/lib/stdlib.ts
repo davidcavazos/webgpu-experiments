@@ -26,8 +26,8 @@ export function toFixedLength<a>(arr: a[], length: number, fill: a) {
   return truncated.concat(filling);
 }
 
-export function clamp(x: number, min: number, max: number): number {
-  return Math.max(Math.min(x, max), min);
+export function clamp(x: number, max?: number, min?: number): number {
+  return Math.max(Math.min(x, max ?? 1), min ?? 0);
 }
 
 export function hashString(str: string): string {
