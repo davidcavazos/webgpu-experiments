@@ -7,6 +7,7 @@ import { Camera, Mesh } from "./lib/content";
 import { getPosition, setPosition } from "./lib/entity";
 import { utils } from "wgpu-matrix";
 import { clamp } from "./lib/stdlib";
+import { Transform } from "./lib/transform";
 
 const MAX_PITCH = utils.degToRad(89.5);
 const TWO_PI = 2 * Math.PI;
