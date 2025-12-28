@@ -118,32 +118,31 @@ function update(state: State<App>): State<App> {
   const mouse = input.mouse.poll();
   const keyboard = input.keyboard.poll();
   if (mouse.scroll) {
+    console.log("---");
+    console.log([...camera.transform.matrix].slice(0, 4));
+    console.log([...camera.transform.matrix].slice(4, 8));
+    console.log([...camera.transform.matrix].slice(8, 12));
+    console.log([...camera.transform.matrix].slice(12, 16));
     if (keyboard.shift.held) {
       // Shift + scroll -> pan camera
       const speed = 0.5 * state.deltaTime;
-      const delta = [-mouse.scroll.x * speed, mouse.scroll.y * speed, 0];
+      const delta = [mouse.scroll.x * speed, -mouse.scroll.y * speed, 0];
       camera.transform.translate(delta);
     } else if (keyboard.ctrl.held || keyboard.meta.held) {
       // Ctrl + scroll -> zoom camera
       // Meta + scroll -> zoom camera
       const speed = 1.5 * state.deltaTime;
-      const delta = [0, 0, (mouse.scroll.y - mouse.scroll.x) * speed];
+      const delta = [0, 0, (mouse.scroll.x - mouse.scroll.y) * speed];
       camera.transform.translate(delta);
     } else if (keyboard.alt.held) {
       // Alt + scroll -> rotate camera
-      const speed = 0.5 * state.deltaTime;
-      const yaw = camera.transform.getYaw() - mouse.scroll.x * speed;
-      const pitch = clamp(
-        camera.transform.getPitch() - mouse.scroll.y * speed,
-        PITCH_CLAM_LIMIT_RADIANS,
-        -PITCH_CLAM_LIMIT_RADIANS,
-      );
-      const m = mat4.identity();
-      mat4.rotateY(m, yaw, m);
-      mat4.rotateX(m, pitch, m);
-      quat.fromMat(m, camera.transform.orientation);
-      // camera.transform.position = [0, 0, 0];
-      // camera.transform.translate([0, 0, distance]);
+      const speed = 0.2 * state.deltaTime;
+      const distance = vec3.len(camera.transform.position());
+      camera.transform = new Transform()
+        .yaw(camera.transform.getYaw() + mouse.scroll.x * speed)
+        .pitch(camera.transform.getPitch() + mouse.scroll.y * speed)
+        .roll(camera.transform.getRoll())
+        .translate([0, 0, -distance]);
     } else {
       // scroll -> orbit camera
       const speed = 0.5 * state.deltaTime;
@@ -174,7 +173,7 @@ function update(state: State<App>): State<App> {
 
   mat4.multiply(
     camera.content.projection,
-    mat4.inverse(camera.transform.matrixRotateTranslateScale()),
+    camera.transform.matrix,
     state.globals.viewProjection,
   );
 

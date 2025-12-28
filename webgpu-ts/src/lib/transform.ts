@@ -10,93 +10,96 @@ import {
 } from "wgpu-matrix";
 import { clamp } from "./stdlib";
 
+const DEFAULT_PITCH_CLAMP_LIMIT = Math.PI / 2 - 0.001; // ~89.9 degrees in radians
+
 export class Transform {
-  position: Vec3Arg;
-  orientation: QuatArg;
-  scale: Vec3Arg;
+  matrix: Mat4;
   constructor(args?: {
     position?: Vec3Arg;
-    rotation?: QuatArg;
+    orientation?: QuatArg;
     scale?: Vec3Arg;
   }) {
-    this.position = args?.position ?? vec3.create();
-    this.orientation = args?.rotation ?? quat.identity();
-    this.scale = args?.scale ?? vec3.create(1, 1, 1);
-    console.log(
-      "TODO: make Transform be a matrix, that we can apply translation, rotation, scale in any order",
-    );
+    this.matrix = mat4.identity();
+    if (args?.scale) {
+      mat4.scale(this.matrix, args.scale, this.matrix);
+    }
+    if (args?.orientation) {
+      mat4.multiply(this.matrix, mat4.fromQuat(args.orientation), this.matrix);
+    }
+    if (args?.position) {
+      mat4.translate(this.matrix, args.position, this.matrix);
+    }
   }
 
-  matrix(dst?: Mat4): Mat4 {
-    return this.matrixTranslateRotateScale(dst);
-  }
-
-  matrixTranslateRotateScale(dst?: Mat4): Mat4 {
-    quat.normalize(this.orientation, this.orientation); // prevent drift
-    dst = mat4.identity(dst);
-    mat4.scale(dst, this.scale, dst);
-    mat4.multiply(dst, mat4.fromQuat(this.orientation), dst);
-    mat4.translate(dst, this.position, dst);
+  position(dst?: Vec3): Vec3 {
+    dst ??= vec3.create();
+    dst.set([this.matrix[12]!, this.matrix[13]!, this.matrix[14]!]);
     return dst;
   }
-
-  matrixRotateTranslateScale(dst?: Mat4): Mat4 {
-    quat.normalize(this.orientation, this.orientation); // prevent drift
-    dst = mat4.identity(dst);
-    mat4.scale(dst, this.scale, dst);
-    mat4.translate(dst, this.position, dst);
-    mat4.multiply(dst, mat4.fromQuat(this.orientation), dst);
-    return dst;
+  setPosition(vec: Vec3Arg): Transform {
+    this.matrix[12]! = vec[0]!;
+    this.matrix[13]! = vec[1]!;
+    this.matrix[14]! = vec[2]!;
+    return this;
   }
 
   translate(offset: Vec3Arg): Transform {
-    const worldOffset = vec3.transformQuat(offset, this.orientation);
-    return this.translateWorld(worldOffset);
-  }
-  translateWorld(offset: Vec3Arg): Transform {
-    vec3.add(this.position, offset, this.position);
+    mat4.translate(this.matrix, offset, this.matrix);
     return this;
   }
+  // translateWorld(offset: Vec3Arg): Transform {
+  //   vec3.add(this.position, offset, this.position);
+  //   return this;
+  // }
 
-  pitch(angleInRadians: number): Transform {
-    return this.rotateX(angleInRadians);
-  }
-  rotateX(angleInRadians: number): Transform {
-    quat.rotateX(this.orientation, angleInRadians, this.orientation);
+  pitch(angleInRadians: number, limitInRadians?: number): Transform {
+    limitInRadians ??= DEFAULT_PITCH_CLAMP_LIMIT;
+    const angle = clamp(angleInRadians, limitInRadians, -limitInRadians);
+    mat4.rotateX(this.matrix, angleInRadians, this.matrix);
     return this;
   }
+  // rotateX(angleInRadians: number): Transform {
+  //   quat.rotateX(this.orientation, angleInRadians, this.orientation);
+  //   return this;
+  // }
   getPitch(): number {
-    const { x, y, z, w } = quatValues(this.orientation);
-    return Math.asin(clamp(2.0 * (w * x - y * z), 1, -1));
+    // const { x, y, z, w } = quatValues(this.orientation);
+    // return Math.asin(clamp(2.0 * (w * x - y * z), 1, -1));
+    return Math.asin(-this.matrix[9]!);
   }
 
   yaw(angleInRadians: number): Transform {
-    return this.rotateY(angleInRadians);
-  }
-  rotateY(angleInRadians: number): Transform {
-    quat.rotateY(this.orientation, angleInRadians, this.orientation);
+    mat4.rotateY(this.matrix, angleInRadians, this.matrix);
     return this;
   }
+  // rotateY(angleInRadians: number): Transform {
+  //   quat.rotateY(this.orientation, angleInRadians, this.orientation);
+  //   return this;
+  // }
   getYaw(): number {
-    const { x, y, z, w } = quatValues(this.orientation);
-    return Math.atan2(2.0 * (w * y + z * x), 1.0 - 2.0 * (x * x + y * y));
+    // const { x, y, z, w } = quatValues(this.orientation);
+    // return Math.atan2(2.0 * (w * y + z * x), 1.0 - 2.0 * (x * x + y * y));
+    return Math.atan2(this.matrix[8]!, this.matrix[10]!);
   }
 
   roll(angleInRadians: number): Transform {
-    return this.rotateZ(angleInRadians);
-  }
-  rotateZ(angleInRadians: number): Transform {
-    quat.rotateZ(this.orientation, angleInRadians, this.orientation);
+    mat4.rotateZ(this.matrix, angleInRadians, this.matrix);
     return this;
   }
+  // rotateZ(angleInRadians: number): Transform {
+  //   quat.rotateZ(this.orientation, angleInRadians, this.orientation);
+  //   return this;
+  // }
   getRoll(): number {
-    const { x, y, z, w } = quatValues(this.orientation);
-    return Math.atan2(2.0 * (w * z + x * y), 1.0 - 2.0 * (z * z + x * x));
+    // const { x, y, z, w } = quatValues(this.orientation);
+    // return Math.atan2(2.0 * (w * z + x * y), 1.0 - 2.0 * (z * z + x * x));
+    return Math.atan2(this.matrix[1]!, this.matrix[5]!);
   }
 
   lookAt(target: Vec3Arg, up?: Vec3Arg): Transform {
-    const m = mat4.lookAt(this.position, target, up ?? [0, 1, 0]);
-    quat.fromMat(m, this.orientation);
+    // const m = mat4.lookAt(this.position, target, up ?? [0, 1, 0]);
+    // quat.fromMat(m, this.orientation);
+    mat4.lookAt(this.position(), target, up ?? [0, 1, 0], this.matrix);
     return this;
   }
 }
