@@ -9,8 +9,7 @@ import { clamp } from "./lib/stdlib";
 import { Transform } from "./lib/transform";
 import { Entity } from "./lib/entity";
 
-const MAX_PITCH = utils.degToRad(89.5);
-const TWO_PI = 2 * Math.PI;
+const PITCH_CLAM_LIMIT_RADIANS = Math.PI / 2 - 0.001; // ~89.9 degrees in radians
 
 const canvas: HTMLCanvasElement = document.querySelector("#canvas")!;
 
@@ -133,20 +132,18 @@ function update(state: State<App>): State<App> {
     } else if (keyboard.alt.held) {
       // Alt + scroll -> rotate camera
       const speed = 0.5 * state.deltaTime;
-      const position = camera.transform.position;
-      const radius = vec3.len(position);
-      // camera.content.yaw =
-      //   (camera.content.yaw + mouse.scroll.x * speed) % TWO_PI;
-      // camera.content.pitch = clamp(
-      //   camera.content.pitch + mouse.scroll.y * speed,
-      //   MAX_PITCH,
-      //   -MAX_PITCH,
-      // );
-      // let matrix = mat4.identity();
-      // matrix = mat4.rotateX(matrix, camera.content.pitch);
-      // matrix = mat4.rotateY(matrix, camera.content.yaw);
-      // matrix = mat4.translate(matrix, [0, 0, -radius]);
-      // camera.transform = matrix;
+      const yaw = camera.transform.getYaw() - mouse.scroll.x * speed;
+      const pitch = clamp(
+        camera.transform.getPitch() - mouse.scroll.y * speed,
+        PITCH_CLAM_LIMIT_RADIANS,
+        -PITCH_CLAM_LIMIT_RADIANS,
+      );
+      const m = mat4.identity();
+      mat4.rotateY(m, yaw, m);
+      mat4.rotateX(m, pitch, m);
+      quat.fromMat(m, camera.transform.orientation);
+      // camera.transform.position = [0, 0, 0];
+      // camera.transform.translate([0, 0, distance]);
     } else {
       // scroll -> orbit camera
       const speed = 0.5 * state.deltaTime;
@@ -177,7 +174,7 @@ function update(state: State<App>): State<App> {
 
   mat4.multiply(
     camera.content.projection,
-    camera.transform.matrixInverse(),
+    mat4.inverse(camera.transform.matrixRotateTranslateScale()),
     state.globals.viewProjection,
   );
 
