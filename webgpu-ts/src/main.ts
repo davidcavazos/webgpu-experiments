@@ -1,13 +1,13 @@
-import { mat4, vec3, type Vec3 } from "wgpu-matrix";
+import { mat4, quat, vec3, type Vec3 } from "wgpu-matrix";
 import { Engine } from "./lib/engine";
 import * as io from "./lib/io";
 import { Scene } from "./lib/scene";
 import { start, type InitState as StateInit, type State } from "./lib/start";
 import { Camera, Mesh } from "./lib/content";
-import { getPosition, setPosition } from "./lib/entity";
 import { utils } from "wgpu-matrix";
 import { clamp } from "./lib/stdlib";
 import { Transform } from "./lib/transform";
+import { Entity } from "./lib/entity";
 
 const MAX_PITCH = utils.degToRad(89.5);
 const TWO_PI = 2 * Math.PI;
@@ -54,12 +54,13 @@ async function init(engine: Engine): Promise<StateInit<App>> {
 
   // Build/load the initial scene.
   const scene = new Scene({
-    // camera: {
-    //   content: Camera(),
-    //   transform: mat4.identity(),
-    //   entities: {},
-    // },
-    triangle1: {
+    camera: Entity({
+      content: Camera(),
+      transform: new Transform({
+        position: [0, 0, 10],
+      }).lookAt([0, 0, 0]),
+    }),
+    triangle1: Entity({
       content: Mesh({
         id: "triangle-mesh",
         vertices: [
@@ -69,15 +70,14 @@ async function init(engine: Engine): Promise<StateInit<App>> {
         ],
         indices: [0, 1, 2],
       }),
-      // transform: mat4.translation([0, 0, -4]),
-      matrix: mat4.identity(),
-      entities: {},
-    },
-    triangle2: {
+    }),
+    triangle2: Entity({
       content: Mesh({ id: "triangle-mesh" }),
-      matrix: mat4.scale(mat4.translation([-0.5, -1, -4]), [0.5, 0.5, 0.5]),
-      entities: {},
-    },
+      transform: new Transform({
+        position: [-0.5, -1, -4],
+        scale: [0.5, 0.5, 0.5],
+      }),
+    }),
     // pyramid1: ref({ filename: "assets/pyramid.obj" }),
   });
 
@@ -122,31 +122,31 @@ function update(state: State<App>): State<App> {
     if (keyboard.shift.held) {
       // Shift + scroll -> pan camera
       const speed = 0.5 * state.deltaTime;
-      const delta = [mouse.scroll.x * speed, -mouse.scroll.y * speed, 0];
-      camera.matrix = mat4.translate(camera.matrix, delta);
+      const delta = [-mouse.scroll.x * speed, mouse.scroll.y * speed, 0];
+      camera.transform.translate(delta);
     } else if (keyboard.ctrl.held || keyboard.meta.held) {
       // Ctrl + scroll -> zoom camera
       // Meta + scroll -> zoom camera
       const speed = 1.5 * state.deltaTime;
-      const delta = [0, 0, (mouse.scroll.x - mouse.scroll.y) * speed];
-      camera.matrix = mat4.translate(camera.matrix, delta);
+      const delta = [0, 0, (mouse.scroll.y - mouse.scroll.x) * speed];
+      camera.transform.translate(delta);
     } else if (keyboard.alt.held) {
       // Alt + scroll -> rotate camera
       const speed = 0.5 * state.deltaTime;
-      const position = getPosition(camera.matrix);
+      const position = camera.transform.position;
       const radius = vec3.len(position);
-      camera.content.yaw =
-        (camera.content.yaw + mouse.scroll.x * speed) % TWO_PI;
-      camera.content.pitch = clamp(
-        camera.content.pitch + mouse.scroll.y * speed,
-        MAX_PITCH,
-        -MAX_PITCH,
-      );
-      let matrix = mat4.identity();
-      matrix = mat4.rotateX(matrix, camera.content.pitch);
-      matrix = mat4.rotateY(matrix, camera.content.yaw);
-      matrix = mat4.translate(matrix, [0, 0, -radius]);
-      camera.matrix = matrix;
+      // camera.content.yaw =
+      //   (camera.content.yaw + mouse.scroll.x * speed) % TWO_PI;
+      // camera.content.pitch = clamp(
+      //   camera.content.pitch + mouse.scroll.y * speed,
+      //   MAX_PITCH,
+      //   -MAX_PITCH,
+      // );
+      // let matrix = mat4.identity();
+      // matrix = mat4.rotateX(matrix, camera.content.pitch);
+      // matrix = mat4.rotateY(matrix, camera.content.yaw);
+      // matrix = mat4.translate(matrix, [0, 0, -radius]);
+      // camera.transform = matrix;
     } else {
       // scroll -> orbit camera
       const speed = 0.5 * state.deltaTime;
@@ -177,7 +177,7 @@ function update(state: State<App>): State<App> {
 
   mat4.multiply(
     camera.content.projection,
-    camera.matrix,
+    camera.transform.matrixInverse(),
     state.globals.viewProjection,
   );
 

@@ -1,11 +1,7 @@
 import { vec3 } from "wgpu-matrix";
-import type {
-  AssetDescriptor,
-  AssetID,
-  AssetLOD,
-  MeshDescriptor,
-} from "../asset";
+import type { AssetID, AssetLOD } from "../asset";
 import { toFixedLength } from "../stdlib";
+import { ContentError, Mesh, type Content } from "../content";
 
 export interface MeshObj {
   positions: number[][];
@@ -17,39 +13,36 @@ export interface MeshObj {
 export async function loadObj(
   filename: string,
   lod: AssetLOD = 0,
-): Promise<AssetDescriptor> {
+): Promise<Content> {
   if (lod !== 0) {
-    return {
-      tag: "AssetError",
+    return ContentError({
       id: filename,
       lod: lod,
       reason:
         "[loaders/mesh.obj.ts:loadObj] LOD higher than 0 not yet supported",
-    };
+    });
   }
   try {
     const resp = await fetch(filename);
     if (!resp.ok) {
-      return {
-        tag: "AssetError",
+      return ContentError({
         id: filename,
         lod: lod,
         reason: `[loaders/mesh.obj.ts:loadObj] ${resp.statusText}`,
-      };
+      });
     }
     const contents = await resp.text();
     return parseObj(filename, contents);
   } catch (e) {
-    return {
-      tag: "AssetError",
+    return ContentError({
       id: filename,
       lod: lod,
       reason: `[loaders/mesh.obj.ts:loadObj] ${e}`,
-    };
+    });
   }
 }
 
-export function parseObj(id: AssetID, contents: string): MeshDescriptor {
+export function parseObj(id: AssetID, contents: string): Mesh {
   // https://en.wikipedia.org/wiki/Wavefront_.obj_file
   const obj: MeshObj = { positions: [], uvs: [], normals: [], faces: [] };
   for (const line of contents.split("\n")) {
@@ -86,7 +79,7 @@ export function parseObj(id: AssetID, contents: string): MeshDescriptor {
   return objToMesh(id, obj);
 }
 
-export function objToMesh(id: AssetID, obj: MeshObj): MeshDescriptor {
+export function objToMesh(id: AssetID, obj: MeshObj): Mesh {
   // The same vertex position could have different uv or normals.
   // Each vertex is a unique combination of (vertex, uv, normal).
   const uniqueFaces = [...new Set(obj.faces.flat())].sort();
@@ -122,5 +115,5 @@ export function objToMesh(id: AssetID, obj: MeshObj): MeshDescriptor {
     ];
   });
   const indices = obj.faces.flat().map((face) => uniqueFaces.indexOf(face));
-  return { tag: "MeshDescriptor", id, vertices, indices };
+  return Mesh({ id, vertices, indices });
 }

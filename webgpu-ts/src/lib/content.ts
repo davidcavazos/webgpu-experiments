@@ -1,6 +1,5 @@
 import { mat4, vec3, type Mat4, type Vec3 } from "wgpu-matrix";
 import type { AssetID, AssetLOD } from "./asset";
-import { getPosition } from "./entity";
 
 export type ContentLoader = (id: AssetID, lod: AssetLOD) => Promise<Content>;
 
@@ -39,21 +38,27 @@ export const Mesh = (args?: {
 export type Camera = {
   tag: "Camera";
   projection: Mat4;
-  yaw: number;
-  pitch: number;
-  roll: number;
 };
-export const Camera = (args?: {
-  projection?: Mat4;
-  yaw?: number;
-  pitch?: number;
-  roll?: number;
-}): Camera => ({
+export const Camera = (args?: { projection?: Mat4 }): Camera => ({
   tag: "Camera",
   projection: args?.projection ?? mat4.identity(),
-  yaw: args?.yaw ?? 0,
-  pitch: args?.pitch ?? 0,
-  roll: args?.roll ?? 0,
 });
 
-export type Content = Empty | Reference | Mesh | Camera;
+export type ContentError = {
+  tag: "ContentError";
+  id: AssetID;
+  lod: AssetLOD;
+  reason: string;
+};
+export const ContentError = (args: {
+  id: AssetID;
+  lod: AssetLOD;
+  reason: string;
+}): ContentError => ({
+  tag: "ContentError",
+  id: args.id,
+  lod: args.lod,
+  reason: args.reason,
+});
+
+export type Content = Empty | Reference | Mesh | Camera | ContentError;

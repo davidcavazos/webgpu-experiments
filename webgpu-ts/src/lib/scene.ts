@@ -1,6 +1,7 @@
 import { mat4, vec3 } from "wgpu-matrix";
 import { Camera } from "./content";
 import type { Entity, EntityID } from "./entity";
+import { Transform } from "./transform";
 
 export class Scene {
   entities: Record<EntityID, Entity>;
@@ -8,13 +9,9 @@ export class Scene {
   constructor(entities?: Record<EntityID, Entity>) {
     this.entities = entities ?? {};
 
-    // const eye = [1, 2, 5];
-    const eye = vec3.create(0, 0, 10);
-    const target = vec3.create(0, 0, 0);
-    const up = vec3.create(0, 1, 0);
     this.defaultCamera = {
       content: Camera(),
-      matrix: mat4.lookAt(eye, target, up),
+      transform: new Transform({ position: [1, 2, 5] }).lookAt([0, 0, 0]),
       entities: {},
     };
   }
