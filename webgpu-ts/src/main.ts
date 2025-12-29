@@ -57,7 +57,7 @@ async function init(engine: Engine): Promise<StateInit<App>> {
       content: Camera(),
       transform: new Transform({
         position: [0, 0, 10],
-      }).lookAt([0, 0, 0]),
+      }).cameraAim([0, 0, 0]),
     }),
     triangle1: Entity({
       content: Mesh({
@@ -126,23 +126,22 @@ function update(state: State<App>): State<App> {
     if (keyboard.shift.held) {
       // Shift + scroll -> pan camera
       const speed = 0.5 * state.deltaTime;
-      const delta = [mouse.scroll.x * speed, -mouse.scroll.y * speed, 0];
+      const delta = [-mouse.scroll.x * speed, mouse.scroll.y * speed, 0];
       camera.transform.translate(delta);
     } else if (keyboard.ctrl.held || keyboard.meta.held) {
       // Ctrl + scroll -> zoom camera
       // Meta + scroll -> zoom camera
       const speed = 1.5 * state.deltaTime;
-      const delta = [0, 0, (mouse.scroll.x - mouse.scroll.y) * speed];
+      const delta = [0, 0, (mouse.scroll.y - mouse.scroll.x) * speed];
       camera.transform.translate(delta);
     } else if (keyboard.alt.held) {
       // Alt + scroll -> rotate camera
       const speed = 0.2 * state.deltaTime;
-      const distance = vec3.len(camera.transform.position());
       camera.transform = new Transform()
-        .yaw(camera.transform.getYaw() + mouse.scroll.x * speed)
-        .pitch(camera.transform.getPitch() + mouse.scroll.y * speed)
-        .roll(camera.transform.getRoll())
-        .translate([0, 0, -distance]);
+        .translate(camera.transform.position())
+        .yaw(camera.transform.getYaw() - mouse.scroll.x * speed)
+        .pitch(camera.transform.getPitch() - mouse.scroll.y * speed)
+        .roll(camera.transform.getRoll());
     } else {
       // scroll -> orbit camera
       const speed = 0.5 * state.deltaTime;
@@ -173,7 +172,7 @@ function update(state: State<App>): State<App> {
 
   mat4.multiply(
     camera.content.projection,
-    camera.transform.matrix,
+    mat4.inverse(camera.transform.matrix),
     state.globals.viewProjection,
   );
 

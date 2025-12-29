@@ -96,6 +96,16 @@ export class Transform {
     return Math.atan2(this.matrix[1]!, this.matrix[5]!);
   }
 
+  aim(target: Vec3Arg, up?: Vec3Arg): Transform {
+    mat4.aim(this.position(), target, up ?? [0, 1, 0], this.matrix);
+    return this;
+  }
+
+  cameraAim(target: Vec3Arg, up?: Vec3Arg): Transform {
+    mat4.cameraAim(this.position(), target, up ?? [0, 1, 0], this.matrix);
+    return this;
+  }
+
   lookAt(target: Vec3Arg, up?: Vec3Arg): Transform {
     // const m = mat4.lookAt(this.position, target, up ?? [0, 1, 0]);
     // quat.fromMat(m, this.orientation);
