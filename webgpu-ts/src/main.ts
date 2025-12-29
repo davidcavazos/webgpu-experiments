@@ -6,10 +6,8 @@ import { start, type InitState as StateInit, type State } from "./lib/start";
 import { Camera, Mesh } from "./lib/content";
 import { utils } from "wgpu-matrix";
 import { clamp } from "./lib/stdlib";
-import { Transform } from "./lib/transform";
+import { Transform, vec3YawPitch } from "./lib/transform";
 import { Entity } from "./lib/entity";
-
-const PITCH_CLAM_LIMIT_RADIANS = Math.PI / 2 - 0.001; // ~89.9 degrees in radians
 
 const canvas: HTMLCanvasElement = document.querySelector("#canvas")!;
 
@@ -69,12 +67,20 @@ async function init(engine: Engine): Promise<StateInit<App>> {
         ],
         indices: [0, 1, 2],
       }),
+      transform: new Transform({
+        position: [1, 1, 1],
+      }),
     }),
     triangle2: Entity({
       content: Mesh({ id: "triangle-mesh" }),
       transform: new Transform({
-        position: [-0.5, -1, -4],
-        scale: [0.5, 0.5, 0.5],
+        position: [-1, -1, -10],
+      }),
+    }),
+    origin: Entity({
+      content: Mesh({ id: "triangle-mesh" }),
+      transform: new Transform({
+        scale: [0.1, 0.1, 0.1],
       }),
     }),
     // pyramid1: ref({ filename: "assets/pyramid.obj" }),
@@ -106,6 +112,49 @@ function resize(state: State<App>, width: number, height: number): State<App> {
     1, // zNear
     2000, // zFar
   );
+
+  const dx = -0.1; // ~11°
+  const dy = 0.0;
+  // const pivot = state.app.cursor;
+  console.log("=== camera ===");
+  camera.transform.yaw(-0.2); //.pitch(0.2);
+  const position = camera.transform.getPosition();
+  const yaw = camera.transform.getYaw();
+  const pitch = camera.transform.getPitch();
+  console.log("position", [...position]);
+  console.log("yaw", yaw.toFixed(2));
+  console.log("pitch", pitch.toFixed(2));
+  console.log("=== vars ===");
+  const pivot = [1, 0, 0];
+  const pivotDirection = vec3.sub(pivot, camera.transform.getPosition());
+  const pivotAngle = vec3YawPitch(pivotDirection);
+  const radius = vec3.len(pivotDirection);
+  const forward = vec3.negate(camera.transform.forward());
+  const forwardAngle = vec3YawPitch(forward);
+  const localAngle = {
+    yaw: forwardAngle.yaw - pivotAngle.yaw,
+    pitch: forwardAngle.pitch - pivotAngle.pitch,
+  };
+  console.log("pivot", [...pivot]);
+  console.log("pivotDirection", [...pivotDirection], vec3.len(pivotDirection));
+  console.log("pivotAngle", pivotAngle);
+  console.log("radius", radius.toFixed(2));
+  console.log("forward", [...forward]);
+  console.log("forwardAngle", forwardAngle);
+  console.log("localAngle", localAngle);
+  // console.log("=== orbit before ===");
+  // const orbitBefore = new Transform() //
+  //   .translate([0, 0, radius]);
+  console.log("=== orbit after ===");
+  const orbitAfter = new Transform() //
+    .setPosition(position)
+    .yaw(yaw + dx);
+  console.log("position", [...orbitAfter.getPosition()]);
+  console.log("yaw", orbitAfter.getYaw());
+  console.log("pitch", orbitAfter.getPitch());
+
+  // camera.transform = orbitAfter;
+
   return state;
 }
 
@@ -138,13 +187,30 @@ function update(state: State<App>): State<App> {
       // Alt + scroll -> rotate camera
       const speed = 0.2 * state.deltaTime;
       camera.transform = new Transform()
-        .translate(camera.transform.position())
+        .translate(camera.transform.getPosition())
         .yaw(camera.transform.getYaw() - mouse.scroll.x * speed)
         .pitch(camera.transform.getPitch() - mouse.scroll.y * speed)
         .roll(camera.transform.getRoll());
     } else {
       // scroll -> orbit camera
       const speed = 0.5 * state.deltaTime;
+      const pivot = state.app.cursor;
+      const direction = vec3.sub(camera.transform.getPosition(), pivot);
+      // const radius = vec3.len(direction);
+      const angleOffset = vec3YawPitch(direction);
+      console.log("direction", direction);
+      console.log("angleOffset", angleOffset);
+      // const orbit = new Transform()
+      //   .translate(pivot)
+      //   .yaw(camera.transform.getYaw() - mouse.scroll.x * speed)
+      //   .pitch(camera.transform.getPitch() - mouse.scroll.y * speed);
+
+      // camera.transform = new Transform()
+      //   .translate(pivot)
+      //   .yaw(camera.transform.getYaw() - mouse.scroll.x * speed)
+      //   .pitch(camera.transform.getPitch() - mouse.scroll.y * speed)
+      //   .translate([0, 0, radius]);
+
       // const position = getPosition(camera.matrix);
       // const pivot = state.app.cursor;
       // // const radius = vec3.distance(position, pivot);

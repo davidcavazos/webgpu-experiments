@@ -65,9 +65,10 @@ export async function start<a>(args: {
     now: performance.now(),
   };
 
-  if (args.resize) {
-    state = args.resize(state, args.canvas.width, args.canvas.height);
-  }
+  // Browser automatically, resizes at start
+  // if (args.resize) {
+  //   state = args.resize(state, args.canvas.width, args.canvas.height);
+  // }
   function render(now: number) {
     if (now === state.now) {
       return;

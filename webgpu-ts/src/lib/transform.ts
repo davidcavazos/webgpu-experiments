@@ -3,6 +3,7 @@ import {
   quat,
   vec3,
   type Mat4,
+  type Mat4Arg,
   type Quat,
   type QuatArg,
   type Vec3,
@@ -31,7 +32,16 @@ export class Transform {
     }
   }
 
-  position(dst?: Vec3): Vec3 {
+  identity(): Transform {
+    mat4.identity(this.matrix);
+    return this;
+  }
+
+  forward(): Vec3 {
+    return vec3.create(this.matrix[8]!, this.matrix[9]!, this.matrix[10]!);
+  }
+
+  getPosition(dst?: Vec3): Vec3 {
     dst ??= vec3.create();
     dst.set([this.matrix[12]!, this.matrix[13]!, this.matrix[14]!]);
     return dst;
@@ -40,6 +50,15 @@ export class Transform {
     this.matrix[12]! = vec[0]!;
     this.matrix[13]! = vec[1]!;
     this.matrix[14]! = vec[2]!;
+    return this;
+  }
+
+  distance(vec: Vec3Arg): number {
+    return vec3.distance(this.getPosition(), vec);
+  }
+
+  multiply(mat: Mat4Arg): Transform {
+    mat4.multiply(this.matrix, mat, this.matrix);
     return this;
   }
 
@@ -58,10 +77,10 @@ export class Transform {
     mat4.rotateX(this.matrix, angleInRadians, this.matrix);
     return this;
   }
-  // rotateX(angleInRadians: number): Transform {
-  //   quat.rotateX(this.orientation, angleInRadians, this.orientation);
-  //   return this;
-  // }
+  rotateX(angleInRadians: number): Transform {
+    mat4.rotateX(this.matrix, angleInRadians, this.matrix);
+    return this;
+  }
   getPitch(): number {
     // const { x, y, z, w } = quatValues(this.orientation);
     // return Math.asin(clamp(2.0 * (w * x - y * z), 1, -1));
@@ -72,10 +91,10 @@ export class Transform {
     mat4.rotateY(this.matrix, angleInRadians, this.matrix);
     return this;
   }
-  // rotateY(angleInRadians: number): Transform {
-  //   quat.rotateY(this.orientation, angleInRadians, this.orientation);
-  //   return this;
-  // }
+  rotateY(angleInRadians: number): Transform {
+    mat4.rotateY(this.matrix, angleInRadians, this.matrix);
+    return this;
+  }
   getYaw(): number {
     // const { x, y, z, w } = quatValues(this.orientation);
     // return Math.atan2(2.0 * (w * y + z * x), 1.0 - 2.0 * (x * x + y * y));
@@ -86,30 +105,35 @@ export class Transform {
     mat4.rotateZ(this.matrix, angleInRadians, this.matrix);
     return this;
   }
-  // rotateZ(angleInRadians: number): Transform {
-  //   quat.rotateZ(this.orientation, angleInRadians, this.orientation);
-  //   return this;
-  // }
+  rotateZ(angleInRadians: number): Transform {
+    mat4.rotateZ(this.matrix, angleInRadians, this.matrix);
+    return this;
+  }
   getRoll(): number {
     // const { x, y, z, w } = quatValues(this.orientation);
     // return Math.atan2(2.0 * (w * z + x * y), 1.0 - 2.0 * (z * z + x * x));
     return Math.atan2(this.matrix[1]!, this.matrix[5]!);
   }
 
+  rotate(axis: Vec3Arg, angleInRadians: number): Transform {
+    mat4.rotate(this.matrix, axis, angleInRadians, this.matrix);
+    return this;
+  }
+
   aim(target: Vec3Arg, up?: Vec3Arg): Transform {
-    mat4.aim(this.position(), target, up ?? [0, 1, 0], this.matrix);
+    mat4.aim(this.getPosition(), target, up ?? [0, 1, 0], this.matrix);
     return this;
   }
 
   cameraAim(target: Vec3Arg, up?: Vec3Arg): Transform {
-    mat4.cameraAim(this.position(), target, up ?? [0, 1, 0], this.matrix);
+    mat4.cameraAim(this.getPosition(), target, up ?? [0, 1, 0], this.matrix);
     return this;
   }
 
   lookAt(target: Vec3Arg, up?: Vec3Arg): Transform {
     // const m = mat4.lookAt(this.position, target, up ?? [0, 1, 0]);
     // quat.fromMat(m, this.orientation);
-    mat4.lookAt(this.position(), target, up ?? [0, 1, 0], this.matrix);
+    mat4.lookAt(this.getPosition(), target, up ?? [0, 1, 0], this.matrix);
     return this;
   }
 }
@@ -125,4 +149,12 @@ export function quatValues(q: QuatArg): {
   w: number;
 } {
   return { x: q[0]!, y: q[1]!, z: q[2]!, w: q[3]! };
+}
+
+export function vec3YawPitch(v: Vec3Arg): { yaw: number; pitch: number } {
+  const direction = vec3.normalize(v);
+  return {
+    yaw: Math.atan2(direction[0]!, direction[2]!),
+    pitch: Math.asin(direction[1]!),
+  };
 }
