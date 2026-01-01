@@ -1,6 +1,6 @@
 import { vec3 } from "wgpu-matrix";
 import type { AssetID, AssetLOD } from "../asset";
-import { toFixedLength } from "../stdlib";
+import { parseInt, toFixedLength } from "../stdlib";
 import { ContentError, Mesh, type Content } from "../content";
 
 export interface MeshObj {

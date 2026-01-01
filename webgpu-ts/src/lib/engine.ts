@@ -11,6 +11,7 @@ import {
 import { EntityBuffer, type EntityBufferSlot } from "./assets/entityBuffer";
 import { Globals } from "./assets/globals";
 import { IndexBuffer, type IndexBufferSlot } from "./assets/indexBuffer";
+import { Locals } from "./assets/locals";
 import { VertexBuffer, type VertexBufferSlot } from "./assets/vertexBuffer";
 import type { Content, ContentLoader } from "./content";
 import type { Entity } from "./entity";
@@ -68,6 +69,7 @@ export class Engine {
   };
   shaderModule: GPUShaderModule;
   globals: Globals;
+  locals: Locals;
   entityBuffer: EntityBuffer;
   vertexBuffer: VertexBuffer;
   indexBuffer: IndexBuffer;
@@ -99,10 +101,12 @@ export class Engine {
 
     const presentationFormat = navigator.gpu.getPreferredCanvasFormat();
     this.globals = new Globals(this.device);
+    this.locals = new Locals(this.device);
     this.entityBuffer = new EntityBuffer(this.device);
     this.vertexBuffer = new VertexBuffer(this.device);
     this.indexBuffer = new IndexBuffer(this.device);
 
+    // TODO: merge globals and locals into a single uniform.
     const bindGroupLayout = this.device.createBindGroupLayout({
       entries: [
         {
@@ -110,11 +114,11 @@ export class Engine {
           visibility: GPUShaderStage.VERTEX,
           buffer: { type: "uniform" },
         },
-        // {
-        //   binding: 1, // cameras
-        //   visibility: GPUShaderStage.VERTEX,
-        //   buffer: { type: "uniform" },
-        // },
+        {
+          binding: 1, // locals
+          visibility: GPUShaderStage.VERTEX,
+          buffer: { type: "uniform" },
+        },
         {
           binding: 2, // entities
           visibility: GPUShaderStage.VERTEX,
@@ -155,10 +159,10 @@ export class Engine {
           binding: 0, // globals
           resource: { buffer: this.globals.buffer },
         },
-        // {
-        //   binding: 1, // cameras
-        //   resource: { buffer: this.lightBuffer.buffer },
-        // },
+        {
+          binding: 1, // locals
+          resource: { buffer: this.locals.buffer },
+        },
         {
           binding: 2, // entities
           resource: { buffer: this.entityBuffer.buffer },
@@ -167,69 +171,8 @@ export class Engine {
     });
   }
 
-  async shaderCompilationMessages(): Promise<{
-    info: string[];
-    warnings: string[];
-    errors: string[];
-  }> {
-    const compilationInfo = await this.shaderModule.getCompilationInfo();
-    let info: string[] = [];
-    let warnings: string[] = [];
-    let errors: string[] = [];
-    if (compilationInfo.messages.length > 0) {
-      console.log("Shader Compilation Messages:");
-      for (const msg of compilationInfo.messages) {
-        const message = `${msg.lineNum}:${msg.linePos}: ${msg.message}`;
-        switch (msg.type) {
-          case "info":
-            info.push(message);
-            break;
-          case "warning":
-            warnings.push(message);
-            break;
-          case "error":
-            errors.push(message);
-            break;
-        }
-      }
-    }
-    return { info, warnings, errors };
-  }
-
-  draw(scene: Scene, now: number) {
-    this.globals.writeBuffer();
-    this.stage(scene, now);
-
-    const encoder = this.device.createCommandEncoder();
-    const pass = encoder.beginRenderPass({
-      colorAttachments: [
-        {
-          view: this.context.getCurrentTexture().createView(),
-          loadOp: "clear",
-          storeOp: "store",
-          clearValue: { r: 0, g: 0, b: 0, a: 1 },
-        },
-      ],
-      // depthStencilAttachment: {
-      //   view: depthTexture.createView(),
-      //   depthClearValue: 1.0,
-      //   depthLoadOp: "clear",
-      //   depthStoreOp: "store",
-      // },
-    });
-
-    pass.setPipeline(this.pipeline);
-    pass.setBindGroup(0, this.bindGroup);
-    for (const batch of Object.values(this.passes.opaque)) {
-      pass.setVertexBuffer(0, batch.vertices.buffer);
-      pass.setIndexBuffer(batch.indices.buffer, batch.indices.format);
-      pass.drawIndexed(batch.indices.count, batch.entities.count);
-    }
-    pass.end();
-    this.device.queue.submit([encoder.finish()]);
-  }
-
   stage(scene: Scene, now: number) {
+    this.globals.writeBuffer();
     // TODO: keep track on LRU of when an asset was used with `now`
     const instances = Object.values(scene.entities).map((entity) => ({
       entity,
@@ -248,6 +191,7 @@ export class Engine {
           break;
       }
     }
+    this.entityBuffer.clear();
     this.passes = {
       opaque: Object.fromEntries(
         Object.entries(opaques).map(([id, { entities, asset }]) => {
@@ -260,6 +204,43 @@ export class Engine {
         }),
       ),
     };
+  }
+
+  draw(scene: Scene, now: number) {
+    this.stage(scene, now);
+    const encoder = this.device.createCommandEncoder();
+    const pass = encoder.beginRenderPass({
+      colorAttachments: [
+        {
+          view: this.context.getCurrentTexture().createView(),
+          loadOp: "clear",
+          storeOp: "store",
+          clearValue: { r: 0, g: 0, b: 0, a: 1 },
+        },
+      ],
+      // depthStencilAttachment: {
+      //   view: depthTexture.createView(),
+      //   depthClearValue: 1.0,
+      //   depthLoadOp: "clear",
+      //   depthStoreOp: "store",
+      // },
+    });
+    pass.setPipeline(this.pipeline);
+    pass.setBindGroup(0, this.bindGroup);
+    for (const batch of Object.values(this.passes.opaque)) {
+      this.locals.writeBuffer({
+        entityOffset: batch.entities.offset / EntityBuffer.stride,
+      });
+      pass.setVertexBuffer(0, batch.vertices.buffer, batch.vertices.offset);
+      pass.setIndexBuffer(
+        batch.indices.buffer,
+        batch.indices.format,
+        batch.indices.offset,
+      );
+      pass.drawIndexed(batch.indices.count, batch.entities.count);
+    }
+    pass.end();
+    this.device.queue.submit([encoder.finish()]);
   }
 
   request(content: Content, lod: AssetLOD = 0): { id: AssetID; asset: Asset } {
@@ -301,6 +282,7 @@ export class Engine {
           this.loading[id] = loader(content.filename, lod)
             .then((content) => {
               delete this.loading[id];
+              delete this.staged[id];
               return this.request(content);
             })
             .catch((e) => {
@@ -359,6 +341,35 @@ export class Engine {
     }
     return undefined;
   }
+
+  async shaderCompilationMessages(): Promise<{
+    info: string[];
+    warnings: string[];
+    errors: string[];
+  }> {
+    const compilationInfo = await this.shaderModule.getCompilationInfo();
+    let info: string[] = [];
+    let warnings: string[] = [];
+    let errors: string[] = [];
+    if (compilationInfo.messages.length > 0) {
+      console.log("Shader Compilation Messages:");
+      for (const msg of compilationInfo.messages) {
+        const message = `${msg.lineNum}:${msg.linePos}: ${msg.message}`;
+        switch (msg.type) {
+          case "info":
+            info.push(message);
+            break;
+          case "warning":
+            warnings.push(message);
+            break;
+          case "error":
+            errors.push(message);
+            break;
+        }
+      }
+    }
+    return { info, warnings, errors };
+  }
 }
 
 export function getAssetID(content: Content, lod: AssetLOD): AssetID {
@@ -409,6 +420,11 @@ const defaultShaders = /* wgsl */ `
   };
   @group(0) @binding(0) var<uniform> globals: Globals;
 
+  struct Locals {
+    entity_offset: u32,
+  }
+  @group(0) @binding(1) var<uniform> locals: Locals;
+
   struct Entity {
     transform: mat4x4f,
   };
@@ -430,7 +446,7 @@ const defaultShaders = /* wgsl */ `
     @builtin(instance_index) instance_id: u32,
     input: VertexInput
   ) -> VertexOutput {
-    var entity = entities[instance_id];
+    var entity = entities[locals.entity_offset + instance_id];
     var output: VertexOutput;
     output.position = globals.view_projection * entity.transform * vec4f(input.position, 1.0);
     output.normal = input.normal;
