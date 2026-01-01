@@ -1,12 +1,10 @@
-import { mat4, quat, vec3, type Vec3 } from "wgpu-matrix";
+import { mat4, vec3, type Vec3 } from "wgpu-matrix";
 import { Engine } from "./lib/engine";
 import * as io from "./lib/io";
 import { Scene } from "./lib/scene";
 import { start, type InitState as StateInit, type State } from "./lib/start";
 import { Camera, Mesh, Reference } from "./lib/content";
-import { utils } from "wgpu-matrix";
-import { clamp } from "./lib/stdlib";
-import { Transform, vec3YawPitch } from "./lib/transform";
+import { Transform } from "./lib/transform";
 import { Entity } from "./lib/entity";
 
 const canvas: HTMLCanvasElement = document.querySelector("#canvas")!;
@@ -81,27 +79,7 @@ async function init(engine: Engine): Promise<StateInit<App>> {
       content: Reference("assets/cube.obj"),
       transform: new Transform({ scale: [0.1, 0.1, 0.1] }),
     }),
-    // origin: Entity({
-    //   content: Mesh({ id: "triangle-mesh" }),
-    //   transform: new Transform({
-    //     scale: [0.1, 0.1, 0.1],
-    //   }),
-    // }),
   });
-
-  /* on render loop
-  globals uniform -- once per frame
-  - view projection matrix
-  locals uniform -- for each mesh
-  - world matrix (transform)
-  - material stuff
-  - animation stuff
-  */
-
-  // Bind groups:
-  // 0) Globals (view projection)
-  // 1) Model (transform, material, animation, etc)
-  // 3) Textures
 
   // Return the initial state.
   return {

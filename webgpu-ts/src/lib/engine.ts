@@ -74,6 +74,7 @@ export class Engine {
   globals: Globals;
   vertexBuffer: VertexBuffer;
   indexBuffer: IndexBuffer;
+  depthTexture: GPUTexture;
   pipeline: GPURenderPipeline;
   globalsBindGroup: GPUBindGroup;
   constructor(args: {
@@ -104,6 +105,7 @@ export class Engine {
     this.globals = new Globals(this.device);
     this.vertexBuffer = new VertexBuffer(this.device);
     this.indexBuffer = new IndexBuffer(this.device);
+    this.depthTexture = this.createDepthTexture();
 
     const bindGroupLayoutUniform = this.device.createBindGroupLayout({
       label: "Uniform",
@@ -149,17 +151,27 @@ export class Engine {
         topology: "triangle-list",
         cullMode: "back",
       },
-      // depthStencil: {
-      //   depthWriteEnabled: true,
-      //   depthCompare: "less",
-      //   format: "depth24plus",
-      // },
+      depthStencil: {
+        depthWriteEnabled: true,
+        depthCompare: "less",
+        format: "depth24plus",
+      },
     });
 
     this.globalsBindGroup = this.device.createBindGroup({
       label: "Globals",
       layout: this.pipeline.getBindGroupLayout(0), // @group(0) -- globals
       entries: [{ binding: 0, resource: this.globals.buffer }],
+    });
+  }
+
+  createDepthTexture(): GPUTexture {
+    return this.device.createTexture({
+      label: "Depth texture",
+      usage: GPUTextureUsage.RENDER_ATTACHMENT,
+      size: [this.canvas.width, this.canvas.height],
+      format: "depth24plus",
+      sampleCount: 1,
     });
   }
 
@@ -204,17 +216,17 @@ export class Engine {
       colorAttachments: [
         {
           view: this.context.getCurrentTexture().createView(),
+          clearValue: { r: 0, g: 0, b: 0, a: 1 },
           loadOp: "clear",
           storeOp: "store",
-          clearValue: { r: 0, g: 0, b: 0, a: 1 },
         },
       ],
-      // depthStencilAttachment: {
-      //   view: depthTexture.createView(),
-      //   depthClearValue: 1.0,
-      //   depthLoadOp: "clear",
-      //   depthStoreOp: "store",
-      // },
+      depthStencilAttachment: {
+        view: this.depthTexture.createView(),
+        depthClearValue: 1.0,
+        depthLoadOp: "clear",
+        depthStoreOp: "store",
+      },
     });
     pass.setPipeline(this.pipeline);
     pass.setBindGroup(Engine.BIND_GROUP_GLOBALS, this.globalsBindGroup);

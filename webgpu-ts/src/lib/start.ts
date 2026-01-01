@@ -127,6 +127,8 @@ export async function start<a>(args: {
       if (args.resize) {
         state = args.resize(state, args.canvas.width, args.canvas.height);
       }
+      engine.depthTexture.destroy();
+      engine.depthTexture = engine.createDepthTexture();
       requestAnimationFrame(render);
     }
   });
