@@ -8,7 +8,6 @@ import {
   type AssetLOD,
   type RequestID,
 } from "./asset";
-import { EntityBuffer, type EntityBufferSlot } from "./assets/entityBuffer";
 import { Globals } from "./assets/globals";
 import { IndexBuffer, type IndexBufferSlot } from "./assets/indexBuffer";
 import { Locals } from "./assets/locals";
@@ -17,7 +16,7 @@ import type { Content, ContentLoader } from "./content";
 import type { Entity } from "./entity";
 import { loadObj } from "./loaders/mesh.obj";
 import type { Scene } from "./scene";
-import { parseInt, hashString, hashRecord } from "./stdlib";
+import { parseInt, hashString, hashRecord, splitBatches } from "./stdlib";
 
 // As a proof of concept, this only supports loading, not unloading.
 // This means the entire scene must fit into GPU memory.
@@ -51,13 +50,17 @@ import { parseInt, hashString, hashRecord } from "./stdlib";
 
 export type FilePattern = string;
 
-export interface BatchDraw {
-  entities: EntityBufferSlot;
+export interface InstanceGroup {
+  bindGroup: GPUBindGroup;
+  instancesCount: number;
   vertices: VertexBufferSlot;
   indices: IndexBufferSlot;
 }
 
 export class Engine {
+  static readonly BIND_GROUP_GLOBALS = 0;
+  static readonly BIND_GROUP_INSTANCES = 1;
+
   readonly device: GPUDevice;
   readonly canvas: HTMLCanvasElement;
   readonly context: GPUCanvasContext;
@@ -65,16 +68,14 @@ export class Engine {
   staged: Record<AssetID, Asset>;
   loading: Record<RequestID, Promise<Content>>;
   passes: {
-    opaque: Record<AssetID, BatchDraw>;
+    opaque: Record<AssetID, InstanceGroup>;
   };
   shaderModule: GPUShaderModule;
   globals: Globals;
-  locals: Locals;
-  entityBuffer: EntityBuffer;
   vertexBuffer: VertexBuffer;
   indexBuffer: IndexBuffer;
   pipeline: GPURenderPipeline;
-  bindGroup: GPUBindGroup;
+  globalsBindGroup: GPUBindGroup;
   constructor(args: {
     device: GPUDevice;
     canvas: HTMLCanvasElement;
@@ -101,26 +102,25 @@ export class Engine {
 
     const presentationFormat = navigator.gpu.getPreferredCanvasFormat();
     this.globals = new Globals(this.device);
-    this.locals = new Locals(this.device);
-    this.entityBuffer = new EntityBuffer(this.device);
     this.vertexBuffer = new VertexBuffer(this.device);
     this.indexBuffer = new IndexBuffer(this.device);
 
-    // TODO: merge globals and locals into a single uniform.
-    const bindGroupLayout = this.device.createBindGroupLayout({
+    const bindGroupLayoutUniform = this.device.createBindGroupLayout({
+      label: "Uniform",
       entries: [
         {
-          binding: 0, // globals
+          binding: 0,
           visibility: GPUShaderStage.VERTEX,
           buffer: { type: "uniform" },
         },
+      ],
+    });
+
+    const bindGroupLayoutStorageReadOnly = this.device.createBindGroupLayout({
+      label: "Storage read-only",
+      entries: [
         {
-          binding: 1, // locals
-          visibility: GPUShaderStage.VERTEX,
-          buffer: { type: "uniform" },
-        },
-        {
-          binding: 2, // entities
+          binding: 0,
           visibility: GPUShaderStage.VERTEX,
           buffer: { type: "read-only-storage" },
         },
@@ -128,8 +128,12 @@ export class Engine {
     });
 
     this.pipeline = this.device.createRenderPipeline({
+      label: "Opaque",
       layout: this.device.createPipelineLayout({
-        bindGroupLayouts: [bindGroupLayout],
+        bindGroupLayouts: [
+          bindGroupLayoutUniform, // @group(0) -- globals
+          bindGroupLayoutStorageReadOnly, // @group(1) -- instances
+        ],
       }),
       vertex: {
         module: this.shaderModule,
@@ -152,22 +156,10 @@ export class Engine {
       // },
     });
 
-    this.bindGroup = this.device.createBindGroup({
-      layout: this.pipeline.getBindGroupLayout(0),
-      entries: [
-        {
-          binding: 0, // globals
-          resource: { buffer: this.globals.buffer },
-        },
-        {
-          binding: 1, // locals
-          resource: { buffer: this.locals.buffer },
-        },
-        {
-          binding: 2, // entities
-          resource: { buffer: this.entityBuffer.buffer },
-        },
-      ],
+    this.globalsBindGroup = this.device.createBindGroup({
+      label: "Globals",
+      layout: this.pipeline.getBindGroupLayout(0), // @group(0) -- globals
+      entries: [{ binding: 0, resource: this.globals.buffer }],
     });
   }
 
@@ -191,19 +183,18 @@ export class Engine {
           break;
       }
     }
-    this.entityBuffer.clear();
-    this.passes = {
-      opaque: Object.fromEntries(
-        Object.entries(opaques).map(([id, { entities, asset }]) => {
-          const batch: BatchDraw = {
-            entities: this.entityBuffer.write(entities),
-            vertices: asset.vertices,
-            indices: asset.indices,
-          };
-          return [id, batch];
-        }),
-      ),
-    };
+
+    // TODO: make a more efficient memory management for entities bind groups.
+    // https://toji.dev/webgpu-best-practices/bind-groups.html
+    this.passes.opaque = {};
+    for (const [id, { entities, asset }] of Object.entries(opaques)) {
+      this.passes.opaque[id] = {
+        bindGroup: this.instancesBindGroup(`[opaque] ${id}`, entities),
+        instancesCount: entities.length,
+        vertices: asset.vertices,
+        indices: asset.indices,
+      };
+    }
   }
 
   draw(scene: Scene, now: number) {
@@ -226,21 +217,38 @@ export class Engine {
       // },
     });
     pass.setPipeline(this.pipeline);
-    pass.setBindGroup(0, this.bindGroup);
-    for (const batch of Object.values(this.passes.opaque)) {
-      this.locals.writeBuffer({
-        entityOffset: batch.entities.offset / EntityBuffer.stride,
-      });
-      pass.setVertexBuffer(0, batch.vertices.buffer, batch.vertices.offset);
+    pass.setBindGroup(Engine.BIND_GROUP_GLOBALS, this.globalsBindGroup);
+    for (const group of Object.values(this.passes.opaque)) {
+      pass.setVertexBuffer(0, group.vertices.buffer, group.vertices.offset);
       pass.setIndexBuffer(
-        batch.indices.buffer,
-        batch.indices.format,
-        batch.indices.offset,
+        group.indices.buffer,
+        group.indices.format,
+        group.indices.offset,
       );
-      pass.drawIndexed(batch.indices.count, batch.entities.count);
+      pass.setBindGroup(Engine.BIND_GROUP_INSTANCES, group.bindGroup);
+      pass.drawIndexed(group.indices.count, group.instancesCount);
     }
     pass.end();
     this.device.queue.submit([encoder.finish()]);
+  }
+
+  static readonly INSTANCE_SIZE = 4 * 4 * Float32Array.BYTES_PER_ELEMENT;
+  instancesBindGroup(label: string, entities: Entity[]): GPUBindGroup {
+    const buffer = this.device.createBuffer({
+      label,
+      usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
+      size: Engine.INSTANCE_SIZE * entities.length,
+      mappedAtCreation: true,
+    });
+    const arrayBuffer = buffer.getMappedRange();
+    new Float32Array(arrayBuffer).set([
+      ...entities.flatMap((e) => [...e.transform.matrix]),
+    ]);
+    buffer.unmap();
+    return this.device.createBindGroup({
+      layout: this.pipeline.getBindGroupLayout(1), // @group(1) -- instances
+      entries: [{ binding: 0, resource: buffer }],
+    });
   }
 
   request(content: Content, lod: AssetLOD = 0): { id: AssetID; asset: Asset } {
@@ -420,15 +428,10 @@ const defaultShaders = /* wgsl */ `
   };
   @group(0) @binding(0) var<uniform> globals: Globals;
 
-  struct Locals {
-    entity_offset: u32,
-  }
-  @group(0) @binding(1) var<uniform> locals: Locals;
-
   struct Entity {
     transform: mat4x4f,
   };
-  @group(0) @binding(2) var<storage, read> entities: array<Entity, 100>;
+  @group(1) @binding(0) var<storage, read> entities: array<Entity>;
 
   struct VertexInput {
     @location(0) position: vec3f,
@@ -446,7 +449,7 @@ const defaultShaders = /* wgsl */ `
     @builtin(instance_index) instance_id: u32,
     input: VertexInput
   ) -> VertexOutput {
-    var entity = entities[locals.entity_offset + instance_id];
+    var entity = entities[instance_id];
     var output: VertexOutput;
     output.position = globals.view_projection * entity.transform * vec4f(input.position, 1.0);
     output.normal = input.normal;

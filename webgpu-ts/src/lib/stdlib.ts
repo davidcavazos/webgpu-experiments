@@ -30,6 +30,11 @@ export function clamp(x: number, max?: number, min?: number): number {
   return Math.max(Math.min(x, max ?? 1), min ?? 0);
 }
 
+export function splitBatches<a>(xs: a[], size: number): a[][] {
+  const length = Math.ceil(xs.length / size);
+  return Array.from({ length }, (_, i) => xs.slice(i * size, i * size + size));
+}
+
 export function hashString(str: string): string {
   let hash = 0;
   for (let ch of str) {

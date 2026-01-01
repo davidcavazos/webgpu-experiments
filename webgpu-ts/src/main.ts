@@ -89,11 +89,19 @@ async function init(engine: Engine): Promise<StateInit<App>> {
     // }),
   });
 
-  console.error(
-    "⚠️ TODO: each entity should have its own 'locals' bind group with its transform matrix",
-  );
-  // https://www.reddit.com/r/webgpu/comments/1go20qr/best_way_to_render_multiple_objects_with/
-  // https://toji.dev/webgpu-best-practices/bind-groups.html
+  /* on render loop
+  globals uniform -- once per frame
+  - view projection matrix
+  locals uniform -- for each mesh
+  - world matrix (transform)
+  - material stuff
+  - animation stuff
+  */
+
+  // Bind groups:
+  // 0) Globals (view projection)
+  // 1) Model (transform, material, animation, etc)
+  // 3) Textures
 
   // Return the initial state.
   return {
