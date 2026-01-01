@@ -161,23 +161,10 @@ function update(state: State<App>): State<App> {
     } else {
       // scroll -> orbit camera
       const speed = 0.5 * state.deltaTime;
-      // const pivot = state.app.cursor;
-      const pivot = [0, 0, 0];
-      const offset = vec3.sub(camera.transform.position(), pivot);
-      const { yaw, pitch } = vec3YawPitch(offset);
-      const radius = vec3.len(offset);
-      const orbiting = new Transform({ position: pivot })
-        .yaw(yaw - mouse.scroll.x * speed)
-        // .pitch(pitch - mouse.scroll.y * speed)
-        .alignUp()
-        .translate([0, 0, radius]);
-      camera.transform = orbiting;
-      // camera.transform //
-      //   // .translate(vec3.negate(pivot))
-      //   .yaw(-mouse.scroll.x * speed)
-      //   .pitch(-mouse.scroll.y * speed)
-      //   .alignUp();
-      // .translate(pivot);
+      const pivot = state.app.cursor;
+      camera.transform
+        .orbit(pivot, -mouse.scroll.x * speed, -mouse.scroll.y * speed)
+        .alignUp();
     }
   }
 

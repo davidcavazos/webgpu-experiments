@@ -89,6 +89,11 @@ export class Transform {
     return vec3.distance(this.position(), vec);
   }
 
+  apply(transform: Transform): Transform {
+    mat4.multiply(transform.matrix, this.matrix, this.matrix);
+    return this;
+  }
+
   multiply(mat: Mat4Arg): Transform {
     mat4.multiply(this.matrix, mat, this.matrix);
     return this;
@@ -176,6 +181,27 @@ export class Transform {
     // quat.fromMat(m, this.orientation);
     mat4.lookAt(this.position(), target, up ?? [0, 1, 0], this.matrix);
     return this;
+  }
+
+  static orbiting(
+    pivot: Vec3Arg,
+    yawInRadians: number,
+    pitchInRadians: number,
+  ): Transform {
+    return new Transform()
+      .translate(vec3.negate(pivot))
+      .yaw(yawInRadians)
+      .pitch(pitchInRadians)
+      .translate(pivot);
+  }
+
+  orbit(
+    pivot: Vec3Arg,
+    yawInRadians: number,
+    pitchInRadians: number,
+  ): Transform {
+    const orbiting = Transform.orbiting(pivot, yawInRadians, pitchInRadians);
+    return this.apply(orbiting);
   }
 }
 
