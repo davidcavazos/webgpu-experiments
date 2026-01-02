@@ -11,7 +11,7 @@ export type EntityBufferSlot = {
 
 export class EntityBuffer extends BufferBase {
   static readonly stride = 4 * 4 * Float32Array.BYTES_PER_ELEMENT;
-  buffer: GPUBuffer;
+  readonly buffer: GPUBuffer;
   constructor(device: GPUDevice) {
     super(
       device,

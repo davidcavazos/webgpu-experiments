@@ -8,6 +8,7 @@ import {
   type AssetLOD,
   type RequestID,
 } from "./asset";
+import { EntityBuffer } from "./assets/entityBuffer";
 import { Globals } from "./assets/globals";
 import { IndexBuffer, type IndexBufferSlot } from "./assets/indexBuffer";
 import { Locals } from "./assets/locals";
@@ -51,6 +52,7 @@ import { parseInt, hashString, hashRecord, splitBatches } from "./stdlib";
 export type FilePattern = string;
 
 export interface InstanceGroup {
+  buffer: GPUBuffer;
   bindGroup: GPUBindGroup;
   instancesCount: number;
   vertices: VertexBufferSlot;
@@ -58,8 +60,8 @@ export interface InstanceGroup {
 }
 
 export class Engine {
-  static readonly BIND_GROUP_GLOBALS = 0;
-  static readonly BIND_GROUP_INSTANCES = 1;
+  static readonly BIND_GROUP_SCENE = 0;
+  static readonly BIND_GROUP_MODEL = 1;
 
   readonly device: GPUDevice;
   readonly canvas: HTMLCanvasElement;
@@ -74,9 +76,10 @@ export class Engine {
   globals: Globals;
   vertexBuffer: VertexBuffer;
   indexBuffer: IndexBuffer;
+  entityBuffer: EntityBuffer;
   depthTexture: GPUTexture;
   pipeline: GPURenderPipeline;
-  globalsBindGroup: GPUBindGroup;
+  sceneBindGroup: GPUBindGroup;
   constructor(args: {
     device: GPUDevice;
     canvas: HTMLCanvasElement;
@@ -105,10 +108,27 @@ export class Engine {
     this.globals = new Globals(this.device);
     this.vertexBuffer = new VertexBuffer(this.device);
     this.indexBuffer = new IndexBuffer(this.device);
+    this.entityBuffer = new EntityBuffer(this.device);
     this.depthTexture = this.createDepthTexture();
 
-    const bindGroupLayoutUniform = this.device.createBindGroupLayout({
-      label: "Uniform",
+    const bindGroupLayoutScene = this.device.createBindGroupLayout({
+      label: "Scene",
+      entries: [
+        {
+          binding: 0, // globals
+          visibility: GPUShaderStage.VERTEX,
+          buffer: { type: "uniform" },
+        },
+        {
+          binding: 1, // instances
+          visibility: GPUShaderStage.VERTEX,
+          buffer: { type: "read-only-storage" },
+        },
+      ],
+    });
+
+    const bindGroupLayoutModel = this.device.createBindGroupLayout({
+      label: "Model",
       entries: [
         {
           binding: 0,
@@ -118,23 +138,12 @@ export class Engine {
       ],
     });
 
-    const bindGroupLayoutStorageReadOnly = this.device.createBindGroupLayout({
-      label: "Storage read-only",
-      entries: [
-        {
-          binding: 0,
-          visibility: GPUShaderStage.VERTEX,
-          buffer: { type: "read-only-storage" },
-        },
-      ],
-    });
-
     this.pipeline = this.device.createRenderPipeline({
       label: "Opaque",
       layout: this.device.createPipelineLayout({
         bindGroupLayouts: [
-          bindGroupLayoutUniform, // @group(0) -- globals
-          bindGroupLayoutStorageReadOnly, // @group(1) -- instances
+          bindGroupLayoutScene, // @group(0) -- scene
+          bindGroupLayoutModel, // @group(1) -- model
         ],
       }),
       vertex: {
@@ -158,10 +167,13 @@ export class Engine {
       },
     });
 
-    this.globalsBindGroup = this.device.createBindGroup({
-      label: "Globals",
-      layout: this.pipeline.getBindGroupLayout(0), // @group(0) -- globals
-      entries: [{ binding: 0, resource: this.globals.buffer }],
+    this.sceneBindGroup = this.device.createBindGroup({
+      label: "Scene",
+      layout: this.pipeline.getBindGroupLayout(0),
+      entries: [
+        { binding: 0, resource: this.globals.buffer },
+        { binding: 1, resource: this.entityBuffer.buffer },
+      ],
     });
   }
 
@@ -187,25 +199,39 @@ export class Engine {
       const { id, asset } = this.request(entity.content, lod);
       switch (asset.tag) {
         case "MeshAsset":
-          if (id in opaques) {
-            opaques[id]?.entities.push(entity);
-          } else {
-            opaques[id] = { entities: [entity], asset };
+          if (!(id in opaques)) {
+            opaques[id] = { entities: [], asset };
           }
+          opaques[id]!.entities.push(entity);
           break;
       }
     }
 
-    // TODO: make a more efficient memory management for entities bind groups.
-    // https://toji.dev/webgpu-best-practices/bind-groups.html
-    this.passes.opaque = {};
+    const modelUniformSize = Uint32Array.BYTES_PER_ELEMENT;
+    this.entityBuffer.clear();
     for (const [id, { entities, asset }] of Object.entries(opaques)) {
-      this.passes.opaque[id] = {
-        bindGroup: this.instancesBindGroup(`[opaque] ${id}`, entities),
-        instancesCount: entities.length,
-        vertices: asset.vertices,
-        indices: asset.indices,
-      };
+      if (!(id in this.passes.opaque)) {
+        const buffer = this.device.createBuffer({
+          label: `[opaque] ${id}`,
+          usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
+          size: modelUniformSize,
+        });
+        this.passes.opaque[id] = {
+          buffer,
+          bindGroup: this.device.createBindGroup({
+            label: `[opaque] ${id}`,
+            layout: this.pipeline.getBindGroupLayout(1),
+            entries: [{ binding: 0, resource: buffer }],
+          }),
+          instancesCount: entities.length,
+          vertices: asset.vertices,
+          indices: asset.indices,
+        };
+      }
+      const slot = this.entityBuffer.write(entities);
+      const data = new ArrayBuffer(modelUniformSize);
+      new Uint32Array(data, 0).set([slot.offset / EntityBuffer.stride]);
+      this.device.queue.writeBuffer(this.passes.opaque[id]!.buffer, 0, data);
     }
   }
 
@@ -229,38 +255,19 @@ export class Engine {
       },
     });
     pass.setPipeline(this.pipeline);
-    pass.setBindGroup(Engine.BIND_GROUP_GLOBALS, this.globalsBindGroup);
-    for (const group of Object.values(this.passes.opaque)) {
-      pass.setVertexBuffer(0, group.vertices.buffer, group.vertices.offset);
+    pass.setBindGroup(Engine.BIND_GROUP_SCENE, this.sceneBindGroup);
+    for (const model of Object.values(this.passes.opaque)) {
+      pass.setBindGroup(Engine.BIND_GROUP_MODEL, model.bindGroup);
+      pass.setVertexBuffer(0, model.vertices.buffer, model.vertices.offset);
       pass.setIndexBuffer(
-        group.indices.buffer,
-        group.indices.format,
-        group.indices.offset,
+        model.indices.buffer,
+        model.indices.format,
+        model.indices.offset,
       );
-      pass.setBindGroup(Engine.BIND_GROUP_INSTANCES, group.bindGroup);
-      pass.drawIndexed(group.indices.count, group.instancesCount);
+      pass.drawIndexed(model.indices.count, model.instancesCount);
     }
     pass.end();
     this.device.queue.submit([encoder.finish()]);
-  }
-
-  static readonly INSTANCE_SIZE = 4 * 4 * Float32Array.BYTES_PER_ELEMENT;
-  instancesBindGroup(label: string, entities: Entity[]): GPUBindGroup {
-    const buffer = this.device.createBuffer({
-      label,
-      usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
-      size: Engine.INSTANCE_SIZE * entities.length,
-      mappedAtCreation: true,
-    });
-    const arrayBuffer = buffer.getMappedRange();
-    new Float32Array(arrayBuffer).set([
-      ...entities.flatMap((e) => [...e.transform.matrix]),
-    ]);
-    buffer.unmap();
-    return this.device.createBindGroup({
-      layout: this.pipeline.getBindGroupLayout(1), // @group(1) -- instances
-      entries: [{ binding: 0, resource: buffer }],
-    });
   }
 
   request(content: Content, lod: AssetLOD = 0): { id: AssetID; asset: Asset } {
@@ -440,10 +447,15 @@ const defaultShaders = /* wgsl */ `
   };
   @group(0) @binding(0) var<uniform> globals: Globals;
 
-  struct Entity {
+  struct Instance {
     transform: mat4x4f,
   };
-  @group(1) @binding(0) var<storage, read> entities: array<Entity>;
+  @group(0) @binding(1) var<storage, read> instances: array<Instance>;
+
+  struct Model {
+    instance_offset: u32,
+  };
+  @group(1) @binding(0) var<uniform> model: Model;
 
   struct VertexInput {
     @location(0) position: vec3f,
@@ -461,9 +473,9 @@ const defaultShaders = /* wgsl */ `
     @builtin(instance_index) instance_id: u32,
     input: VertexInput
   ) -> VertexOutput {
-    var entity = entities[instance_id];
+    var instance = instances[model.instance_offset + instance_id];
     var output: VertexOutput;
-    output.position = globals.view_projection * entity.transform * vec4f(input.position, 1.0);
+    output.position = globals.view_projection * instance.transform * vec4f(input.position, 1.0);
     output.normal = input.normal;
     return output;
   }
