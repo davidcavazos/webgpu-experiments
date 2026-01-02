@@ -79,7 +79,7 @@ export class Engine {
   entityBuffer: EntityBuffer;
   depthTexture: GPUTexture;
   pipeline: GPURenderPipeline;
-  sceneBindGroup: GPUBindGroup;
+  globalsBindGroup: GPUBindGroup;
   constructor(args: {
     device: GPUDevice;
     canvas: HTMLCanvasElement;
@@ -111,8 +111,8 @@ export class Engine {
     this.entityBuffer = new EntityBuffer(this.device);
     this.depthTexture = this.createDepthTexture();
 
-    const bindGroupLayoutScene = this.device.createBindGroupLayout({
-      label: "Scene",
+    const bindGroupLayoutGlobals = this.device.createBindGroupLayout({
+      label: "Globals",
       entries: [
         {
           binding: 0, // globals
@@ -127,11 +127,11 @@ export class Engine {
       ],
     });
 
-    const bindGroupLayoutModel = this.device.createBindGroupLayout({
-      label: "Model",
+    const bindGroupLayoutLocals = this.device.createBindGroupLayout({
+      label: "Locals",
       entries: [
         {
-          binding: 0,
+          binding: 0, // model
           visibility: GPUShaderStage.VERTEX,
           buffer: { type: "uniform" },
         },
@@ -142,8 +142,8 @@ export class Engine {
       label: "Opaque",
       layout: this.device.createPipelineLayout({
         bindGroupLayouts: [
-          bindGroupLayoutScene, // @group(0) -- scene
-          bindGroupLayoutModel, // @group(1) -- model
+          bindGroupLayoutGlobals, // @group(0)
+          bindGroupLayoutLocals, // @group(1)
         ],
       }),
       vertex: {
@@ -167,8 +167,8 @@ export class Engine {
       },
     });
 
-    this.sceneBindGroup = this.device.createBindGroup({
-      label: "Scene",
+    this.globalsBindGroup = this.device.createBindGroup({
+      label: "Globals",
       layout: this.pipeline.getBindGroupLayout(0),
       entries: [
         { binding: 0, resource: this.globals.buffer },
@@ -255,7 +255,7 @@ export class Engine {
       },
     });
     pass.setPipeline(this.pipeline);
-    pass.setBindGroup(Engine.BIND_GROUP_SCENE, this.sceneBindGroup);
+    pass.setBindGroup(Engine.BIND_GROUP_SCENE, this.globalsBindGroup);
     for (const model of Object.values(this.passes.opaque)) {
       pass.setBindGroup(Engine.BIND_GROUP_MODEL, model.bindGroup);
       pass.setVertexBuffer(0, model.vertices.buffer, model.vertices.offset);
@@ -469,7 +469,7 @@ const defaultShaders = /* wgsl */ `
   };
 
   @vertex fn opaque_vertex(
-    // @builtin(vertex_index) vertexIndex : u32,
+    // @builtin(vertex_index) vertex_index : u32,
     @builtin(instance_index) instance_id: u32,
     input: VertexInput
   ) -> VertexOutput {

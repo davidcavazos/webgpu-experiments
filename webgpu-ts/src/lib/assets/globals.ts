@@ -1,3 +1,5 @@
+import type { Mat4 } from "wgpu-matrix";
+
 export class Globals {
   static readonly viewProjectionSize = 4 * 4 * Float32Array.BYTES_PER_ELEMENT;
   static readonly size = Globals.viewProjectionSize;
@@ -5,7 +7,8 @@ export class Globals {
   readonly device: GPUDevice;
   readonly buffer: GPUBuffer;
   $arrayBuffer: ArrayBuffer;
-  viewProjection: Float32Array;
+  viewProjection: Mat4;
+
   constructor(device: GPUDevice) {
     this.device = device;
     this.buffer = this.device.createBuffer({
