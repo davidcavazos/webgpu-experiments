@@ -65,6 +65,12 @@ export function parseObj(id: AssetID, contents: string): Mesh {
         //   -- shouldn't be an issue with machine-made files (eg. Blender).
         obj.faces.push(data);
         break;
+      case "o": // object name
+        // TODO
+        break;
+      case "s": // smooth shading
+        // TODO
+        break;
       case undefined:
       case "": // Empty line, skip.
         break;

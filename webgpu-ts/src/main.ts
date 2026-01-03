@@ -55,6 +55,10 @@ async function init(engine: Engine): Promise<StateInit<App>> {
         position: [0, 0, 10],
       }).cameraAim([0, 0, 0]),
     }),
+    origin: Entity({
+      content: Reference("assets/cube.obj"),
+      transform: new Transform({ scale: [0.1, 0.1, 0.1] }),
+    }),
     triangle1: Entity({
       content: Mesh({
         id: "triangle-mesh",
@@ -75,9 +79,12 @@ async function init(engine: Engine): Promise<StateInit<App>> {
         position: [-1, -1, -10],
       }),
     }),
-    origin: Entity({
-      content: Reference("assets/cube.obj"),
-      transform: new Transform({ scale: [0.1, 0.1, 0.1] }),
+    sphere: Entity({
+      content: Reference("assets/icosphere.obj"),
+      transform: new Transform({
+        position: [-2, 1, -3],
+        scale: [0.5, 0.5, 0.5],
+      }),
     }),
   });
 
