@@ -11,8 +11,8 @@ import {
 } from "wgpu-matrix";
 import { clamp } from "./stdlib";
 
-const DEFAULT_PITCH_CLAMP_LIMIT = Math.PI / 2 - 0.001; // ~89.9 degrees in radians
-
+// TODO: Store Position-Rotation-Scale (PRS) instead of Mat4
+// TODO: Make uniform scale (single f32 instead of vec3)
 export class Transform {
   matrix: Mat4;
   constructor(args?: {
@@ -30,6 +30,15 @@ export class Transform {
     if (args?.scale) {
       mat4.scale(this.matrix, args.scale, this.matrix);
     }
+  }
+
+  serialize(dst?: Float32Array): Float32Array {
+    const size = 3 + 4 + 3; // pos vec3 + rot quat + scale vec3
+    dst ??= new Float32Array(size);
+    dst.set(this.getPosition(), 0);
+    dst.set(this.getOrientation(), 3);
+    dst.set(this.getScale(), 7);
+    return dst;
   }
 
   identity(): Transform {
@@ -73,7 +82,7 @@ export class Transform {
     return this;
   }
 
-  position(dst?: Vec3): Vec3 {
+  getPosition(dst?: Vec3): Vec3 {
     dst ??= vec3.create();
     dst.set([this.matrix[12]!, this.matrix[13]!, this.matrix[14]!]);
     return dst;
@@ -84,9 +93,22 @@ export class Transform {
     this.matrix[14]! = vec[2]!;
     return this;
   }
+  getOrientation(dst?: Quat): Quat {
+    dst ??= quat.create();
+    return quat.fromMat(this.matrix, dst);
+  }
+  getScale(dst?: Vec3): Vec3 {
+    dst ??= vec3.create();
+    dst.set([
+      vec3.len(this.right()),
+      vec3.len(this.up()),
+      vec3.len(this.forward()),
+    ]);
+    return dst;
+  }
 
   distance(vec: Vec3Arg): number {
-    return vec3.distance(this.position(), vec);
+    return vec3.distance(this.getPosition(), vec);
   }
 
   apply(transform: Transform): Transform {
@@ -167,19 +189,19 @@ export class Transform {
 
   aim(target: Vec3Arg, up?: Vec3Arg): Transform {
     // mat4.aim(this.position(), target, up ?? [0, 1, 0], this.matrix);
-    this.setForward(vec3.normalize(vec3.sub(target, this.position())));
+    this.setForward(vec3.normalize(vec3.sub(target, this.getPosition())));
     return this.alignUp(up ?? [0, 1, 0]);
   }
 
   cameraAim(target: Vec3Arg, up?: Vec3Arg): Transform {
-    this.setForward(vec3.normalize(vec3.sub(this.position(), target)));
+    this.setForward(vec3.normalize(vec3.sub(this.getPosition(), target)));
     return this.alignUp(up ?? [0, 1, 0]);
   }
 
   lookAt(target: Vec3Arg, up?: Vec3Arg): Transform {
     // const m = mat4.lookAt(this.position, target, up ?? [0, 1, 0]);
     // quat.fromMat(m, this.orientation);
-    mat4.lookAt(this.position(), target, up ?? [0, 1, 0], this.matrix);
+    mat4.lookAt(this.getPosition(), target, up ?? [0, 1, 0], this.matrix);
     return this;
   }
 

@@ -1,7 +1,10 @@
 import type { Globals } from "./assets/globals";
 import { Engine } from "./engine";
 import { type Scene } from "./scene";
-import type { EntityID } from "./entity";
+import { Entity, type EntityID } from "./entity";
+import { Renderer } from "./renderer";
+import { Reference } from "./resource";
+import { Transform } from "./transform";
 
 export interface InitState<a> {
   scene: Scene;
@@ -25,6 +28,10 @@ export async function start<a>(args: {
   updateAfterDraw?: (state: State<a>) => State<a>;
   camera?: EntityID;
 }) {
+  const resize = args.resize ?? ((s, _w, _h) => s);
+  const update = args.update ?? ((s) => s);
+  const updateAfterDraw = args.updateAfterDraw ?? ((s) => s);
+
   // Get the GPU device
   if (!navigator.gpu) {
     window.alert("this browser does not support WebGPU");
@@ -65,6 +72,10 @@ export async function start<a>(args: {
     now: performance.now(),
   };
 
+  const renderer = new Renderer({ device });
+  renderer.entities.set(Object.entries(initialState.scene.entities));
+  console.log(renderer);
+
   // Browser automatically, resizes at start
   // if (args.resize) {
   //   state = args.resize(state, args.canvas.width, args.canvas.height);
@@ -80,13 +91,9 @@ export async function start<a>(args: {
       frameNumber: state.frameNumber + 1,
     };
 
-    if (args.update) {
-      state = args.update(state);
-    }
+    state = update(state);
     engine.draw(state.scene, now);
-    if (args.updateAfterDraw) {
-      state = args.updateAfterDraw(state);
-    }
+    state = updateAfterDraw(state);
     requestAnimationFrame(render);
   }
   requestAnimationFrame(render);
@@ -124,9 +131,7 @@ export async function start<a>(args: {
         1,
         Math.min(height, device.limits.maxTextureDimension2D),
       );
-      if (args.resize) {
-        state = args.resize(state, args.canvas.width, args.canvas.height);
-      }
+      state = resize(state, args.canvas.width, args.canvas.height);
       engine.depthTexture.destroy();
       engine.depthTexture = engine.createDepthTexture();
       requestAnimationFrame(render);

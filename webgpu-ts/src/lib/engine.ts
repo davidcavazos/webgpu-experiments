@@ -11,9 +11,10 @@ import {
 import { EntityBuffer } from "./assets/entityBuffer";
 import { Globals } from "./assets/globals";
 import { IndexBuffer, type IndexBufferSlot } from "./assets/indexBuffer";
+import { LightBuffer } from "./assets/lightBuffer";
 import { Locals } from "./assets/locals";
 import { VertexBuffer, type VertexBufferSlot } from "./assets/vertexBuffer";
-import type { Content, ContentLoader } from "./content";
+import type { Resource, ResourceLoader } from "./resource";
 import type { Entity } from "./entity";
 import { loadObj } from "./loaders/mesh.obj";
 import type { Scene } from "./scene";
@@ -66,9 +67,9 @@ export class Engine {
   readonly device: GPUDevice;
   readonly canvas: HTMLCanvasElement;
   readonly context: GPUCanvasContext;
-  readonly loaders: Record<FilePattern, ContentLoader>;
+  readonly loaders: Record<FilePattern, ResourceLoader>;
   staged: Record<AssetID, Asset>;
-  loading: Record<RequestID, Promise<Content>>;
+  loading: Record<RequestID, Promise<Resource>>;
   passes: {
     opaque: Record<AssetID, InstanceGroup>;
   };
@@ -77,6 +78,7 @@ export class Engine {
   vertexBuffer: VertexBuffer;
   indexBuffer: IndexBuffer;
   entityBuffer: EntityBuffer;
+  lightBuffer: LightBuffer;
   depthTexture: GPUTexture;
   pipeline: GPURenderPipeline;
   globalsBindGroup: GPUBindGroup;
@@ -84,7 +86,7 @@ export class Engine {
     device: GPUDevice;
     canvas: HTMLCanvasElement;
     context: GPUCanvasContext;
-    loaders?: Record<AssetID, ContentLoader>;
+    loaders?: Record<AssetID, ResourceLoader>;
     shaders?: string;
   }) {
     this.device = args.device;
@@ -109,6 +111,7 @@ export class Engine {
     this.vertexBuffer = new VertexBuffer(this.device);
     this.indexBuffer = new IndexBuffer(this.device);
     this.entityBuffer = new EntityBuffer(this.device);
+    this.lightBuffer = new LightBuffer(this.device);
     this.depthTexture = this.createDepthTexture();
 
     const bindGroupLayoutGlobals = this.device.createBindGroupLayout({
@@ -121,6 +124,11 @@ export class Engine {
         },
         {
           binding: 1, // instances
+          visibility: GPUShaderStage.VERTEX,
+          buffer: { type: "read-only-storage" },
+        },
+        {
+          binding: 2, // lights
           visibility: GPUShaderStage.VERTEX,
           buffer: { type: "read-only-storage" },
         },
@@ -173,6 +181,7 @@ export class Engine {
       entries: [
         { binding: 0, resource: this.globals.buffer },
         { binding: 1, resource: this.entityBuffer.buffer },
+        { binding: 2, resource: this.lightBuffer.buffer },
       ],
     });
   }
@@ -196,7 +205,7 @@ export class Engine {
     }));
     let opaques: Record<AssetID, { entities: Entity[]; asset: MeshAsset }> = {};
     for (const { entity, lod } of instances) {
-      const { id, asset } = this.request(entity.content, lod);
+      const { id, asset } = this.request(entity.resource, lod);
       switch (asset.tag) {
         case "MeshAsset":
           if (!(id in opaques)) {
@@ -270,7 +279,7 @@ export class Engine {
     this.device.queue.submit([encoder.finish()]);
   }
 
-  request(content: Content, lod: AssetLOD = 0): { id: AssetID; asset: Asset } {
+  request(content: Resource, lod: AssetLOD = 0): { id: AssetID; asset: Asset } {
     const id = getAssetID(content, lod);
     if (!(id in this.staged)) {
       // Not loaded, try to load it.
@@ -291,7 +300,7 @@ export class Engine {
     return { id, asset: staged };
   }
 
-  loadAsset(id: AssetID, content: Content, lod: AssetLOD): Asset {
+  loadAsset(id: AssetID, content: Resource, lod: AssetLOD): Asset {
     switch (content.tag) {
       case "Empty":
         return EmptyAsset();
@@ -330,7 +339,7 @@ export class Engine {
 
       default:
         throw new Error(
-          `Engine.loadAsset: not implemented: ${(content as Content).tag}`,
+          `Engine.loadAsset: not implemented: ${(content as Resource).tag}`,
         );
     }
   }
@@ -339,7 +348,7 @@ export class Engine {
     throw new Error("TODO: LibraryMesh3D.free");
   }
 
-  findFileLoader(id: AssetID): ContentLoader | undefined {
+  findFileLoader(id: AssetID): ResourceLoader | undefined {
     // 1) Try exact match.
     const loader = this.loaders[id];
     if (loader !== undefined) {
@@ -399,7 +408,7 @@ export class Engine {
   }
 }
 
-export function getAssetID(content: Content, lod: AssetLOD): AssetID {
+export function getAssetID(content: Resource, lod: AssetLOD): AssetID {
   return `${getAssetIDBase(content)}:${lod}`;
 }
 
@@ -414,7 +423,7 @@ function isLowerLOD(id1: AssetID, id2: AssetID): boolean {
   return x.base === y.base && x.lod < y.lod;
 }
 
-function getAssetIDBase(content: Content) {
+function getAssetIDBase(content: Resource) {
   switch (content.tag) {
     case "Empty":
       return "<Empty>";
@@ -435,7 +444,7 @@ function getAssetIDBase(content: Content) {
     // }
     default:
       throw new Error(
-        `engine.getAssetIDBase: not implemented ${(content as Content).tag}`,
+        `engine.getAssetIDBase: not implemented ${(content as Resource).tag}`,
       );
   }
 }
@@ -451,6 +460,12 @@ const defaultShaders = /* wgsl */ `
     transform: mat4x4f,
   };
   @group(0) @binding(1) var<storage, read> instances: array<Instance>;
+  
+  struct Light {
+    color: u32,
+    direction: vec3f,
+  };
+  @group(0) @binding(2) var<storage, read> lights: array<Light>;
 
   struct Model {
     instance_offset: u32,

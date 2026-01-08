@@ -1,5 +1,5 @@
 import { mat4, vec3 } from "wgpu-matrix";
-import { Camera } from "./content";
+import { Camera } from "./resource";
 import type { Entity, EntityID } from "./entity";
 import { Transform } from "./transform";
 
@@ -10,7 +10,7 @@ export class Scene {
     this.entities = entities ?? {};
 
     this.defaultCamera = {
-      content: Camera(),
+      resource: Camera(),
       transform: new Transform({ position: [1, 2, 5] }).lookAt([0, 0, 0]),
       entities: {},
     };
@@ -22,7 +22,7 @@ export class Scene {
 
   findCamera(path: EntityID[]): { camera: Entity<Camera>; found: boolean } {
     const entity = this.find(path);
-    if (entity?.content.tag === "Camera") {
+    if (entity?.resource.tag === "Camera") {
       return { camera: entity as Entity<Camera>, found: true };
     }
     return { camera: this.defaultCamera, found: false };

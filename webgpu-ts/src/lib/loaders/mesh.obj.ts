@@ -1,7 +1,7 @@
 import { vec3 } from "wgpu-matrix";
 import type { AssetID, AssetLOD } from "../asset";
 import { parseInt, toFixedLength } from "../stdlib";
-import { ContentError, Mesh, type Content } from "../content";
+import { ResourceError, Mesh, type Resource } from "../resource";
 
 export interface MeshObj {
   positions: number[][];
@@ -13,9 +13,9 @@ export interface MeshObj {
 export async function loadObj(
   filename: string,
   lod: AssetLOD = 0,
-): Promise<Content> {
+): Promise<Resource> {
   if (lod !== 0) {
-    return ContentError({
+    return ResourceError({
       id: filename,
       lod: lod,
       reason:
@@ -25,7 +25,7 @@ export async function loadObj(
   try {
     const resp = await fetch(filename);
     if (!resp.ok) {
-      return ContentError({
+      return ResourceError({
         id: filename,
         lod: lod,
         reason: `[loaders/mesh.obj.ts:loadObj] ${resp.statusText}`,
@@ -34,7 +34,7 @@ export async function loadObj(
     const contents = await resp.text();
     return parseObj(filename, contents);
   } catch (e) {
-    return ContentError({
+    return ResourceError({
       id: filename,
       lod: lod,
       reason: `[loaders/mesh.obj.ts:loadObj] ${e}`,

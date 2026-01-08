@@ -3,7 +3,7 @@ import { Engine } from "./lib/engine";
 import * as io from "./lib/io";
 import { Scene } from "./lib/scene";
 import { start, type InitState as StateInit, type State } from "./lib/start";
-import { Camera, Mesh, Reference } from "./lib/content";
+import { Camera, Mesh, Reference } from "./lib/resource";
 import { Transform } from "./lib/transform";
 import { Entity } from "./lib/entity";
 
@@ -50,17 +50,17 @@ async function init(engine: Engine): Promise<StateInit<App>> {
   // Build/load the initial scene.
   const scene = new Scene({
     camera: Entity({
-      content: Camera(),
+      resource: Camera(),
       transform: new Transform({
         position: [0, 0, 10],
       }).cameraAim([0, 0, 0]),
     }),
     origin: Entity({
-      content: Reference("assets/cube.obj"),
+      resource: Reference("assets/cube.obj"),
       transform: new Transform({ scale: [0.1, 0.1, 0.1] }),
     }),
     triangle1: Entity({
-      content: Mesh({
+      resource: Mesh({
         id: "triangle-mesh",
         vertices: [
           [0, 0, 0, 1, 0, 0],
@@ -74,13 +74,13 @@ async function init(engine: Engine): Promise<StateInit<App>> {
       }),
     }),
     triangle2: Entity({
-      content: Mesh({ id: "triangle-mesh" }),
+      resource: Mesh({ id: "triangle-mesh" }),
       transform: new Transform({
         position: [-1, -1, -10],
       }),
     }),
     sphere: Entity({
-      content: Reference("assets/icosphere.obj"),
+      resource: Reference("assets/icosphere.obj"),
       transform: new Transform({
         position: [-2, 1, -3],
         scale: [0.5, 0.5, 0.5],
@@ -108,7 +108,7 @@ async function init(engine: Engine): Promise<StateInit<App>> {
 
 function resize(state: State<App>, width: number, height: number): State<App> {
   const { camera } = state.scene.findCamera(["camera"]);
-  camera.content.projection = mat4.perspective(
+  camera.resource.projection = mat4.perspective(
     100, // fieldOfView
     width / height, // aspect
     1, // zNear
@@ -154,7 +154,7 @@ function update(state: State<App>): State<App> {
   }
 
   mat4.multiply(
-    camera.content.projection,
+    camera.resource.projection,
     mat4.inverse(camera.transform.matrix),
     state.globals.viewProjection,
   );

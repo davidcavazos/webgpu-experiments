@@ -8,13 +8,14 @@ export type LightBufferSlot = {
 };
 
 export class LightBuffer extends BufferBase {
+  static readonly stride = (3 + 3) * Float32Array.BYTES_PER_ELEMENT;
   readonly buffer: GPUBuffer;
   constructor(device: GPUDevice) {
     const label = "LightBuffer";
     super(
       device,
       label,
-      GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
+      GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
       device.limits.maxUniformBufferBindingSize,
     );
     this.buffer = this.device.createBuffer({
