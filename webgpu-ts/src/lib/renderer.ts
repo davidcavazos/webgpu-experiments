@@ -17,6 +17,7 @@ import { defaultShaders } from "./shaders";
 import { hashRecord, toFixedLength } from "./stdlib";
 import { GPUArena, type GPUArenaSlot } from "./gpu-arena";
 import { GPUStore } from "./gpu-store";
+import { flattenCode } from "./compute/flatten";
 
 export const MAX_U16_VALUE = 0xffff;
 export const MAX_U32_VALUE = 0xffffffff;
@@ -131,11 +132,6 @@ export interface EntityBounds {
 // TODO: Bones, per-entity (mat4)
 
 export class Renderer {
-  static readonly Binding = {
-    CAMERA: 0,
-    ENTITIES: 1,
-  };
-
   static readonly CAMERA_VIEW_PROJECTION_OFFSET = 0;
   static readonly CAMERA_VIEW_PROJECTION_SIZE = 4 * 4;
   static readonly CAMERA_SIZE =
@@ -157,8 +153,8 @@ export class Renderer {
   indices: GPUArena<MeshLodId, number[]>;
   entities: {
     local: GPUStore<EntityId, EntityData>;
-    world: EntityWorld[]; // TODO: GPUBuffer
-    bounds: MeshBounds[]; // TODO: GPUBuffer
+    world: GPUBuffer;
+    bounds: GPUBuffer;
   };
   meshes: {
     resources: Map<MeshId, Mesh>;
@@ -170,11 +166,21 @@ export class Renderer {
   };
   // lights
   // bounds
-  bindGroupLayout: GPUBindGroupLayout;
-  bindGroup: GPUBindGroup;
-  shaderModule: GPUShaderModule;
+  passes: {
+    flatten: {
+      bindGroupLayout: GPUBindGroupLayout;
+      bindGroup: GPUBindGroup;
+      shaderModule: GPUShaderModule;
+      pipeline: GPUComputePipeline;
+    };
+    draw: {
+      bindGroupLayout: GPUBindGroupLayout;
+      bindGroup: GPUBindGroup;
+      shaderModule: GPUShaderModule;
+      pipeline: GPURenderPipeline;
+    };
+  };
   depthTexture: GPUTexture;
-  pipeline: GPURenderPipeline;
   constructor(args: {
     device: GPUDevice;
     context: GPUCanvasContext;
@@ -204,7 +210,7 @@ export class Renderer {
     this.vertices = new GPUArena({
       device: this.device,
       label: "Vertices",
-      maxSize: this.device.limits.maxBufferSize,
+      size: this.device.limits.maxBufferSize,
       usage: GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST,
       serialize: (vertices) => {
         const values = vertices.flatMap((xs) => toFixedLength(xs, 8, 0));
@@ -215,7 +221,7 @@ export class Renderer {
     this.indices = new GPUArena({
       device: this.device,
       label: "Indices",
-      maxSize: this.device.limits.maxBufferSize,
+      size: this.device.limits.maxBufferSize,
       usage: GPUBufferUsage.INDEX | GPUBufferUsage.COPY_DST,
       serialize: (indices) => {
         return new Uint32Array(indices);
@@ -225,8 +231,8 @@ export class Renderer {
     this.entities = {
       local: new GPUStore({
         device: this.device,
-        label: "Entities",
-        maxSize: this.device.limits.maxStorageBufferBindingSize,
+        label: "Entities local",
+        size: this.device.limits.maxStorageBufferBindingSize,
         usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
         stride: 32,
         serialize: (entity, dst) => {
@@ -240,8 +246,16 @@ export class Renderer {
           // total 28 bytes, 4 bytes free
         },
       }),
-      world: [],
-      bounds: [],
+      world: this.device.createBuffer({
+        label: "Entities world",
+        size: this.device.limits.maxStorageBufferBindingSize,
+        usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC,
+      }),
+      bounds: this.device.createBuffer({
+        label: "Entities bounds",
+        size: this.device.limits.maxStorageBufferBindingSize,
+        usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC,
+      }),
     };
     for (const [id, entity] of args.scene ?? []) {
       this.add([id], entity);
@@ -252,7 +266,7 @@ export class Renderer {
       data: new GPUStore({
         device: this.device,
         label: "Meshes",
-        maxSize: this.device.limits.maxStorageBufferBindingSize,
+        size: this.device.limits.maxStorageBufferBindingSize,
         usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
         stride: 64,
         serialize: (mesh, dst) => {
@@ -279,7 +293,7 @@ export class Renderer {
       data: new GPUStore({
         device: this.device,
         label: "Materials",
-        maxSize: this.device.limits.maxStorageBufferBindingSize,
+        size: this.device.limits.maxStorageBufferBindingSize,
         usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
         stride: 32,
         serialize: (material) => {},
@@ -289,55 +303,86 @@ export class Renderer {
     // lights
     // bounds
 
-    this.bindGroupLayout = this.device.createBindGroupLayout({
-      label: "Scene layout",
+    const presentationFormat = navigator.gpu.getPreferredCanvasFormat();
+
+    const flattenLayout = this.device.createBindGroupLayout({
+      label: "Flatten layout",
       entries: [
         {
-          binding: Renderer.Binding.CAMERA,
+          binding: 0, // Entities local
+          visibility: GPUShaderStage.COMPUTE,
+          buffer: { type: "read-only-storage" },
+        },
+        {
+          binding: 1, // Entities world
+          visibility: GPUShaderStage.COMPUTE,
+          buffer: { type: "storage" },
+        },
+        {
+          binding: 2, // Entities bounds
+          visibility: GPUShaderStage.COMPUTE,
+          buffer: { type: "storage" },
+        },
+      ],
+    });
+    const flattenBindGroup = this.device.createBindGroup({
+      label: "Flatten",
+      layout: flattenLayout,
+      entries: [
+        { binding: 0, resource: this.entities.local.buffer },
+        { binding: 1, resource: this.entities.world },
+        { binding: 2, resource: this.entities.bounds },
+      ],
+    });
+    const flattenShaders = this.device.createShaderModule({
+      code: flattenCode,
+    });
+    const flattenPipeline = this.device.createComputePipeline({
+      label: "Flatten",
+      layout: this.device.createPipelineLayout({
+        bindGroupLayouts: [flattenLayout],
+      }),
+      compute: { module: flattenShaders },
+    });
+
+    const drawLayout = this.device.createBindGroupLayout({
+      label: "Draw layout",
+      entries: [
+        {
+          binding: 0, // Camera
           visibility: GPUShaderStage.VERTEX,
           buffer: { type: "uniform" },
         },
         {
-          binding: Renderer.Binding.ENTITIES,
+          binding: 1, // Entities local
           visibility: GPUShaderStage.VERTEX,
           buffer: { type: "read-only-storage" },
         },
       ],
     });
-
-    this.bindGroup = this.device.createBindGroup({
-      label: "Scene",
-      layout: this.bindGroupLayout,
+    const drawBindGroup = this.device.createBindGroup({
+      label: "Draw",
+      layout: drawLayout,
       entries: [
-        {
-          binding: Renderer.Binding.CAMERA,
-          resource: this.camera.buffer,
-        },
-        {
-          binding: Renderer.Binding.ENTITIES,
-          resource: this.entities.local.buffer,
-        },
+        { binding: 0, resource: this.camera.buffer },
+        { binding: 1, resource: this.entities.local.buffer },
       ],
     });
-
-    this.shaderModule = this.device.createShaderModule({
+    const drawShaders = this.device.createShaderModule({
       code: args.shaders ?? defaultShaders,
     });
-    this.depthTexture = this.createDepthTexture(args.width, args.height);
-
-    const presentationFormat = navigator.gpu.getPreferredCanvasFormat();
-    this.pipeline = this.device.createRenderPipeline({
+    const drawPipeline = this.device.createRenderPipeline({
       label: "Opaque",
       layout: this.device.createPipelineLayout({
-        bindGroupLayouts: [this.bindGroupLayout],
+        bindGroupLayouts: [drawLayout],
       }),
       vertex: {
-        module: this.shaderModule,
+        module: drawShaders,
         entryPoint: "opaque_vertex",
         buffers: [VertexBuffer.layout],
       },
       fragment: {
-        module: this.shaderModule,
+        module: drawShaders,
         entryPoint: "opaque_pixel",
         targets: [{ format: presentationFormat }],
       },
@@ -351,6 +396,23 @@ export class Renderer {
         format: "depth24plus",
       },
     });
+
+    this.passes = {
+      flatten: {
+        bindGroup: flattenBindGroup,
+        bindGroupLayout: flattenLayout,
+        shaderModule: flattenShaders,
+        pipeline: flattenPipeline,
+      },
+      draw: {
+        bindGroup: drawBindGroup,
+        bindGroupLayout: drawLayout,
+        shaderModule: drawShaders,
+        pipeline: drawPipeline,
+      },
+    };
+
+    this.depthTexture = this.createDepthTexture(args.width, args.height);
   }
 
   createDepthTexture(width: number, height: number): GPUTexture {
@@ -489,8 +551,8 @@ export class Renderer {
     //    - Write entity into instance batch
     // 7) Draw indexed
 
-    pass.setPipeline(this.pipeline);
-    pass.setBindGroup(0, this.bindGroup);
+    pass.setPipeline(this.passes.draw.pipeline);
+    pass.setBindGroup(0, this.passes.draw.bindGroup);
     pass.setVertexBuffer(0, this.vertices.buffer);
     pass.setIndexBuffer(this.indices.buffer, "uint32");
     // for (const e of this.entities.entries()) {
@@ -604,12 +666,12 @@ export class Renderer {
   //   return undefined;
   // }
 
-  async shaderCompilationMessages(): Promise<{
+  async shaderCompilationMessages(shaderModule: GPUShaderModule): Promise<{
     info: string[];
     warnings: string[];
     errors: string[];
   }> {
-    const compilationInfo = await this.shaderModule.getCompilationInfo();
+    const compilationInfo = await shaderModule.getCompilationInfo();
     let info: string[] = [];
     let warnings: string[] = [];
     let errors: string[] = [];

@@ -2,30 +2,30 @@ export interface GPUArenaSlot {
   offset: number;
   size: number;
 }
-export class GPUArena<k, a> {
+export class GPUArena<k, v> {
   readonly NULL: number;
   readonly device: GPUDevice;
   readonly buffer: GPUBuffer;
   readonly maxSize: number;
-  readonly serialize: (value: a) => BufferSource;
+  readonly serialize: (value: v) => BufferSource;
   allocations: Map<k, GPUArenaSlot>;
   freeList: GPUArenaSlot[];
   constructor(args: {
     device: GPUDevice;
     label?: string;
-    maxSize: number;
+    size: number;
     usage: number;
-    serialize: (value: a) => BufferSource;
+    serialize: (value: v) => BufferSource;
     NULL?: number;
   }) {
     this.NULL = args.NULL ?? 0xffffffff;
     this.device = args.device;
     this.buffer = this.device.createBuffer({
       label: args.label,
-      size: args.maxSize,
+      size: args.size,
       usage: args.usage,
     });
-    this.maxSize = args.maxSize;
+    this.maxSize = args.size;
     this.serialize = args.serialize;
     this.allocations = new Map();
     this.freeList = [{ offset: 0, size: this.maxSize }];
@@ -36,11 +36,21 @@ export class GPUArena<k, a> {
     this.freeList = [{ offset: 0, size: this.maxSize }];
   }
 
+  size(): number {
+    return this.allocations.size;
+  }
+  keys(): MapIterator<k> {
+    return this.allocations.keys();
+  }
+  entries(): MapIterator<[k, GPUArenaSlot]> {
+    return this.allocations.entries();
+  }
+
   get(key: k): GPUArenaSlot | undefined {
     return this.allocations.get(key);
   }
 
-  add(key: k, value: a): GPUArenaSlot {
+  add(key: k, value: v): GPUArenaSlot {
     const data = this.serialize(value);
     const slot = this.findFreeSlot(data.byteLength);
     if (slot === undefined) {

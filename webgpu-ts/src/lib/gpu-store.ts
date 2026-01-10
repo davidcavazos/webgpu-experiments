@@ -1,30 +1,30 @@
 export type GPUStoreIndex = number;
-export class GPUStore<k, a> {
+export class GPUStore<k, v> {
   readonly NULL: number;
   readonly device: GPUDevice;
   readonly buffer: GPUBuffer;
   readonly maxSize: number;
   readonly stride: number;
-  readonly serialize: (value: a, dst: ArrayBufferLike) => void;
+  readonly serialize: (value: v, dst: ArrayBufferLike) => void;
   allocations: Map<k, GPUStoreIndex>;
   freeList: GPUStoreIndex[];
   constructor(args: {
     device: GPUDevice;
     label?: string;
-    maxSize: number;
+    size: number;
     usage: number;
     stride: number;
-    serialize: (value: a, dst: ArrayBufferLike) => void;
+    serialize: (value: v, dst: ArrayBufferLike) => void;
     NULL?: number;
   }) {
     this.NULL = args.NULL ?? 0xffffffff;
     this.device = args.device;
     this.buffer = this.device.createBuffer({
       label: args.label,
-      size: args.maxSize,
+      size: args.size,
       usage: args.usage,
     });
-    this.maxSize = args.maxSize;
+    this.maxSize = args.size;
     this.stride = args.stride;
     this.serialize = args.serialize;
     this.allocations = new Map();
@@ -36,11 +36,21 @@ export class GPUStore<k, a> {
     this.freeList = [];
   }
 
+  size(): number {
+    return this.allocations.size;
+  }
+  keys(): MapIterator<k> {
+    return this.allocations.keys();
+  }
+  entries(): MapIterator<[k, GPUStoreIndex]> {
+    return this.allocations.entries();
+  }
+
   get(key: k): GPUStoreIndex | undefined {
     return this.allocations.get(key);
   }
 
-  add(key: k, value: a): GPUStoreIndex {
+  add(key: k, value: v): GPUStoreIndex {
     const index = this.findFreeIndex();
     if (index === undefined) {
       return this.NULL;

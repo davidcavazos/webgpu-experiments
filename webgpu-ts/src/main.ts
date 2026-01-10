@@ -25,25 +25,27 @@ async function init(renderer: Renderer): Promise<StateInit<App>> {
   console.log(renderer.device.limits);
 
   // Check for shader compilation errors.
-  const messages = await renderer.shaderCompilationMessages();
-  if (messages.info.length > 0) {
-    console.log("--- Shader info messages ---");
-    for (const msg of messages.info) {
-      console.log(msg);
+  for (const [pass, { shaderModule }] of Object.entries(renderer.passes)) {
+    const messages = await renderer.shaderCompilationMessages(shaderModule);
+    if (messages.info.length > 0) {
+      console.log(`--- [${pass}] info messages ---`);
+      for (const msg of messages.info) {
+        console.log(msg);
+      }
     }
-  }
-  if (messages.warnings.length > 0) {
-    console.log("--- Shader warnings ---");
-    for (const msg of messages.info) {
-      console.log(`⚠️ ${msg}`);
+    if (messages.warnings.length > 0) {
+      console.log(`--- [${pass}] warnings ---`);
+      for (const msg of messages.info) {
+        console.log(`⚠️ ${msg}`);
+      }
     }
-  }
-  if (messages.errors.length > 0) {
-    console.log("--- Shader errors ---");
-    for (const msg of messages.errors) {
-      console.error(msg);
+    if (messages.errors.length > 0) {
+      console.error(`--- [${pass}] errors ---`);
+      for (const msg of messages.errors) {
+        console.error(msg);
+      }
+      throw new Error(`[${pass}] compilation errors`);
     }
-    throw new Error("Shader compilation errors");
   }
 
   // Build/load the initial scene.
