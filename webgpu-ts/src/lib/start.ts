@@ -82,10 +82,10 @@ export async function start<a>(args: {
     app: initialState.app,
   };
   for (const [id, mesh] of initialState.meshes ?? []) {
-    renderer.resources.meshes.set(id, mesh);
+    renderer.meshes.resources.set(id, mesh);
   }
   for (const [id, material] of initialState.materials ?? []) {
-    renderer.resources.materials.set(id, material);
+    renderer.materials.resources.set(id, material);
   }
   for (const [id, entity] of initialState.scene ?? []) {
     renderer.add([id], entity);

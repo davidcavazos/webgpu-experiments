@@ -106,6 +106,12 @@ export interface EntityData {
   meshIndex: MeshIndex;
   materialIndex: MaterialIndex;
 }
+export interface EntityWorld {
+  transform: Transform;
+}
+export interface EntityBounds {
+  bounds: MeshBounds;
+}
 
 // TODO: Animation 128b
 // Base Track        | 16b | Clip A/B IDs, Times, and Crossfade Weight."
@@ -141,12 +147,6 @@ export class Renderer {
 
   device: GPUDevice;
   context: GPUCanvasContext;
-  // TODO: group scene/resources and arenas
-  scene: Map<EntityId, { index: EntityIndex; entity: EntityData }>;
-  resources: {
-    meshes: Map<MeshId, Mesh>;
-    materials: Map<MaterialId, Material>;
-  };
   camera: {
     projection: Mat4;
     transform: Transform;
@@ -155,9 +155,19 @@ export class Renderer {
   };
   vertices: GPUArena<MeshId, number[][]>;
   indices: GPUArena<MeshLodId, number[]>;
-  entities: GPUStore<EntityId, EntityData>;
-  meshes: GPUStore<MeshId, MeshData>;
-  materials: GPUStore<MaterialId, MaterialData>;
+  entities: {
+    local: GPUStore<EntityId, EntityData>;
+    world: EntityWorld[]; // TODO: GPUBuffer
+    bounds: MeshBounds[]; // TODO: GPUBuffer
+  };
+  meshes: {
+    resources: Map<MeshId, Mesh>;
+    data: GPUStore<MeshId, MeshData>;
+  };
+  materials: {
+    resources: Map<MaterialId, Material>;
+    data: GPUStore<MaterialId, MaterialData>;
+  };
   // lights
   // bounds
   bindGroupLayout: GPUBindGroupLayout;
@@ -179,14 +189,6 @@ export class Renderer {
   }) {
     this.device = args.device;
     this.context = args.context;
-    this.resources = {
-      meshes: new Map(args.resources?.meshes),
-      materials: new Map(args.resources?.materials),
-    };
-    this.scene = new Map();
-    for (const [id, entity] of args.scene ?? []) {
-      this.add([id], entity);
-    }
 
     this.camera = {
       projection: mat4.identity(),
@@ -220,56 +222,69 @@ export class Renderer {
       },
     });
 
-    this.entities = new GPUStore({
-      device: this.device,
-      label: "Entities",
-      maxSize: this.device.limits.maxStorageBufferBindingSize,
-      usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
-      stride: 32,
-      serialize: (entity, dst) => {
-        let offset = 0;
-        offset += writeVec3(dst, offset, entity.transform.getPosition()); //   +12 = 12
-        offset += writeQuatU32(dst, offset, entity.transform.getRotation()); // +4 = 16
-        offset += writeF32(dst, offset, entity.transform.getScaleUniform()); // +4 = 20
-        offset += writeU32(dst, offset, entity.parentIndex); //                 +4 = 24
-        offset += writeU16(dst, offset, entity.meshIndex); //                   +2 = 26
-        offset += writeU16(dst, offset, entity.materialIndex); //               +2 = 28
-        // total 28 bytes, 4 bytes free
-      },
-    });
+    this.entities = {
+      local: new GPUStore({
+        device: this.device,
+        label: "Entities",
+        maxSize: this.device.limits.maxStorageBufferBindingSize,
+        usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
+        stride: 32,
+        serialize: (entity, dst) => {
+          let offset = 0;
+          offset += writeVec3(dst, offset, entity.transform.getPosition()); //   +12 = 12
+          offset += writeQuatU32(dst, offset, entity.transform.getRotation()); // +4 = 16
+          offset += writeF32(dst, offset, entity.transform.getScaleUniform()); // +4 = 20
+          offset += writeU32(dst, offset, entity.parentIndex); //                 +4 = 24
+          offset += writeU16(dst, offset, entity.meshIndex); //                   +2 = 26
+          offset += writeU16(dst, offset, entity.materialIndex); //               +2 = 28
+          // total 28 bytes, 4 bytes free
+        },
+      }),
+      world: [],
+      bounds: [],
+    };
+    for (const [id, entity] of args.scene ?? []) {
+      this.add([id], entity);
+    }
 
-    this.meshes = new GPUStore({
-      device: this.device,
-      label: "Meshes",
-      maxSize: this.device.limits.maxStorageBufferBindingSize,
-      usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
-      stride: 64,
-      serialize: (mesh, dst) => {
-        let offset = 0;
-        offset += writeVec3(dst, offset, mesh.bounds.center); //     +12 = 12
-        offset += writeVec3(dst, offset, mesh.bounds.extents); //    +12 = 24
-        offset += writeF32(dst, offset, mesh.bounds.radius); //       +4 = 28
-        offset += writeU32(dst, offset, mesh.vertexOffset); //        +4 = 32
-        offset += writeU32(dst, offset, mesh.indices.lod0.offset); // +4 = 36
-        offset += writeU32(dst, offset, mesh.indices.lod0.count); //  +4 = 40
-        offset += writeU32(dst, offset, mesh.indices.lod1.offset); // +4 = 44
-        offset += writeU32(dst, offset, mesh.indices.lod1.count); //  +4 = 48
-        offset += writeU32(dst, offset, mesh.indices.lod2.offset); // +4 = 52
-        offset += writeU32(dst, offset, mesh.indices.lod2.count); //  +4 = 56
-        offset += writeU32(dst, offset, mesh.indices.lod3.offset); // +4 = 60
-        offset += writeU32(dst, offset, mesh.indices.lod3.count); //  +4 = 64
-        // total 64 bytes, 0 bytes free
-      },
-    });
+    this.meshes = {
+      resources: new Map(args.resources?.meshes),
+      data: new GPUStore({
+        device: this.device,
+        label: "Meshes",
+        maxSize: this.device.limits.maxStorageBufferBindingSize,
+        usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
+        stride: 64,
+        serialize: (mesh, dst) => {
+          let offset = 0;
+          offset += writeVec3(dst, offset, mesh.bounds.center); //     +12 = 12
+          offset += writeVec3(dst, offset, mesh.bounds.extents); //    +12 = 24
+          offset += writeF32(dst, offset, mesh.bounds.radius); //       +4 = 28
+          offset += writeU32(dst, offset, mesh.vertexOffset); //        +4 = 32
+          offset += writeU32(dst, offset, mesh.indices.lod0.offset); // +4 = 36
+          offset += writeU32(dst, offset, mesh.indices.lod0.count); //  +4 = 40
+          offset += writeU32(dst, offset, mesh.indices.lod1.offset); // +4 = 44
+          offset += writeU32(dst, offset, mesh.indices.lod1.count); //  +4 = 48
+          offset += writeU32(dst, offset, mesh.indices.lod2.offset); // +4 = 52
+          offset += writeU32(dst, offset, mesh.indices.lod2.count); //  +4 = 56
+          offset += writeU32(dst, offset, mesh.indices.lod3.offset); // +4 = 60
+          offset += writeU32(dst, offset, mesh.indices.lod3.count); //  +4 = 64
+          // total 64 bytes, 0 bytes free
+        },
+      }),
+    };
 
-    this.materials = new GPUStore({
-      device: this.device,
-      label: "Materials",
-      maxSize: this.device.limits.maxStorageBufferBindingSize,
-      usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
-      stride: 32,
-      serialize: (material) => {},
-    });
+    this.materials = {
+      resources: new Map(args.resources?.materials),
+      data: new GPUStore({
+        device: this.device,
+        label: "Materials",
+        maxSize: this.device.limits.maxStorageBufferBindingSize,
+        usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
+        stride: 32,
+        serialize: (material) => {},
+      }),
+    };
 
     // lights
     // bounds
@@ -300,7 +315,7 @@ export class Renderer {
         },
         {
           binding: Renderer.Binding.ENTITIES,
-          resource: this.entities.buffer,
+          resource: this.entities.local.buffer,
         },
       ],
     });
@@ -367,11 +382,10 @@ export class Renderer {
     const entityData = {
       transform: entity.transform ?? new Transform(),
       meshIndex: this.streamMesh(entity.meshId),
-      materialIndex: this.materials.NULL,
-      parentIndex: parentIndex ?? this.entities.NULL,
+      materialIndex: this.materials.data.NULL,
+      parentIndex: parentIndex ?? this.entities.local.NULL,
     };
-    const index = this.entities.add(id, entityData);
-    this.scene.set(id, { index, entity: entityData });
+    const index = this.entities.local.add(id, entityData);
     for (const [childId, child] of entity.children ?? []) {
       this.add([...path, childId], child, index);
     }
@@ -408,14 +422,14 @@ export class Renderer {
 
   streamMesh(id: MeshId | undefined): MeshIndex {
     if (id === undefined) {
-      return this.meshes.NULL;
+      return this.meshes.data.NULL;
     }
-    let index = this.meshes.get(id);
+    let index = this.meshes.data.get(id);
     if (index === undefined) {
-      const mesh = this.resources.meshes.get(id);
+      const mesh = this.meshes.resources.get(id);
       if (mesh === undefined) {
         console.error(`Undefined mesh resource: ${id}`);
-        return this.meshes.NULL;
+        return this.meshes.data.NULL;
       }
       if (mesh.fromFile) {
         console.error("TODO: Renderer.streamMesh fromFile");
@@ -430,7 +444,7 @@ export class Renderer {
         vertexOffset: this.streamVertices(id, vertices).offset,
         indices: { lod0, lod1, lod2, lod3 },
       };
-      index = this.meshes.add(id, meshData);
+      index = this.meshes.data.add(id, meshData);
     }
     return index;
   }
