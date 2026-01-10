@@ -40,14 +40,6 @@ export class GPUArena<k, a> {
     return this.allocations.get(key);
   }
 
-  stream(key: k, value: a): GPUArenaSlot {
-    const slot = this.allocations.get(key);
-    if (slot !== undefined) {
-      return slot;
-    }
-    return this.add(key, value);
-  }
-
   add(key: k, value: a): GPUArenaSlot {
     const data = this.serialize(value);
     const slot = this.findFreeSlot(data.byteLength);
@@ -68,7 +60,7 @@ export class GPUArena<k, a> {
   // - find with binary search
   // - when inserting a free slot, check if it can be merged
   findFreeSlot(size: number): GPUArenaSlot | undefined {
-    for (const [slotIndex, slot] of this.freeList.entries()) {
+    for (const [i, slot] of this.freeList.entries()) {
       if (slot.size >= size) {
         if (slot.size > size) {
           // Create a smaller free entry for the remainder.
@@ -78,7 +70,7 @@ export class GPUArena<k, a> {
           });
         }
         // Delete the entry from the free list we just used.
-        this.freeList.splice(slotIndex, 1);
+        this.freeList.splice(i, 1);
         return { offset: slot.offset, size };
       }
     }

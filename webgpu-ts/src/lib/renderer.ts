@@ -16,6 +16,7 @@ import { Transform } from "./transform";
 import { defaultShaders } from "./shaders";
 import { hashRecord, toFixedLength } from "./stdlib";
 import { GPUArena, type GPUArenaSlot } from "./gpu-arena";
+import { GPUStore } from "./gpu-store";
 
 export const MAX_U16_VALUE = 0xffff;
 export const MAX_U32_VALUE = 0xffffffff;
@@ -154,9 +155,9 @@ export class Renderer {
   };
   vertices: GPUArena<MeshId, number[][]>;
   indices: GPUArena<MeshLodId, number[]>;
-  entities: GPUArena<EntityId, EntityData>;
-  meshes: GPUArena<MeshId, MeshData>;
-  materials: GPUArena<MaterialId, MaterialData>;
+  entities: GPUStore<EntityId, EntityData>;
+  meshes: GPUStore<MeshId, MeshData>;
+  materials: GPUStore<MaterialId, MaterialData>;
   // lights
   // bounds
   bindGroupLayout: GPUBindGroupLayout;
@@ -219,59 +220,55 @@ export class Renderer {
       },
     });
 
-    this.entities = new GPUArena({
+    this.entities = new GPUStore({
       device: this.device,
       label: "Entities",
       maxSize: this.device.limits.maxStorageBufferBindingSize,
       usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
-      serialize: (entity) => {
-        const buffer = new ArrayBuffer(32);
+      stride: 32,
+      serialize: (entity, dst) => {
         let offset = 0;
-        offset += writeVec3(buffer, offset, entity.transform.getPosition()); //   +12 = 12
-        offset += writeQuatU32(buffer, offset, entity.transform.getRotation()); // +4 = 16
-        offset += writeF32(buffer, offset, entity.transform.getScaleUniform()); // +4 = 20
-        offset += writeU32(buffer, offset, entity.parentIndex); //                 +4 = 24
-        offset += writeU16(buffer, offset, entity.meshIndex); //                   +2 = 26
-        offset += writeU16(buffer, offset, entity.materialIndex); //               +2 = 28
+        offset += writeVec3(dst, offset, entity.transform.getPosition()); //   +12 = 12
+        offset += writeQuatU32(dst, offset, entity.transform.getRotation()); // +4 = 16
+        offset += writeF32(dst, offset, entity.transform.getScaleUniform()); // +4 = 20
+        offset += writeU32(dst, offset, entity.parentIndex); //                 +4 = 24
+        offset += writeU16(dst, offset, entity.meshIndex); //                   +2 = 26
+        offset += writeU16(dst, offset, entity.materialIndex); //               +2 = 28
         // total 28 bytes, 4 bytes free
-        return buffer;
       },
     });
 
-    this.meshes = new GPUArena({
+    this.meshes = new GPUStore({
       device: this.device,
       label: "Meshes",
       maxSize: this.device.limits.maxStorageBufferBindingSize,
       usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
-      serialize: (mesh) => {
-        const buffer = new ArrayBuffer(64);
+      stride: 64,
+      serialize: (mesh, dst) => {
         let offset = 0;
-        offset += writeVec3(buffer, offset, mesh.bounds.center); //     +12 = 12
-        offset += writeVec3(buffer, offset, mesh.bounds.extents); //    +12 = 24
-        offset += writeF32(buffer, offset, mesh.bounds.radius); //       +4 = 28
-        offset += writeU32(buffer, offset, mesh.vertexOffset); //        +4 = 32
-        offset += writeU32(buffer, offset, mesh.indices.lod0.offset); // +4 = 36
-        offset += writeU32(buffer, offset, mesh.indices.lod0.count); //  +4 = 40
-        offset += writeU32(buffer, offset, mesh.indices.lod1.offset); // +4 = 44
-        offset += writeU32(buffer, offset, mesh.indices.lod1.count); //  +4 = 48
-        offset += writeU32(buffer, offset, mesh.indices.lod2.offset); // +4 = 52
-        offset += writeU32(buffer, offset, mesh.indices.lod2.count); //  +4 = 56
-        offset += writeU32(buffer, offset, mesh.indices.lod3.offset); // +4 = 60
-        offset += writeU32(buffer, offset, mesh.indices.lod3.count); //  +4 = 64
+        offset += writeVec3(dst, offset, mesh.bounds.center); //     +12 = 12
+        offset += writeVec3(dst, offset, mesh.bounds.extents); //    +12 = 24
+        offset += writeF32(dst, offset, mesh.bounds.radius); //       +4 = 28
+        offset += writeU32(dst, offset, mesh.vertexOffset); //        +4 = 32
+        offset += writeU32(dst, offset, mesh.indices.lod0.offset); // +4 = 36
+        offset += writeU32(dst, offset, mesh.indices.lod0.count); //  +4 = 40
+        offset += writeU32(dst, offset, mesh.indices.lod1.offset); // +4 = 44
+        offset += writeU32(dst, offset, mesh.indices.lod1.count); //  +4 = 48
+        offset += writeU32(dst, offset, mesh.indices.lod2.offset); // +4 = 52
+        offset += writeU32(dst, offset, mesh.indices.lod2.count); //  +4 = 56
+        offset += writeU32(dst, offset, mesh.indices.lod3.offset); // +4 = 60
+        offset += writeU32(dst, offset, mesh.indices.lod3.count); //  +4 = 64
         // total 64 bytes, 0 bytes free
-        return buffer;
       },
     });
 
-    this.materials = new GPUArena({
+    this.materials = new GPUStore({
       device: this.device,
       label: "Materials",
       maxSize: this.device.limits.maxStorageBufferBindingSize,
       usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
-      serialize: (material) => {
-        const buffer = new ArrayBuffer(32);
-        return buffer;
-      },
+      stride: 32,
+      serialize: (material) => {},
     });
 
     // lights
@@ -373,8 +370,7 @@ export class Renderer {
       materialIndex: this.materials.NULL,
       parentIndex: parentIndex ?? this.entities.NULL,
     };
-    const slot = this.entities.add(id, entityData);
-    const index = Math.floor(slot.offset / slot.size);
+    const index = this.entities.add(id, entityData);
     this.scene.set(id, { index, entity: entityData });
     for (const [childId, child] of entity.children ?? []) {
       this.add([...path, childId], child, index);
@@ -414,8 +410,8 @@ export class Renderer {
     if (id === undefined) {
       return this.meshes.NULL;
     }
-    let slot = this.meshes.get(id);
-    if (slot === undefined) {
+    let index = this.meshes.get(id);
+    if (index === undefined) {
       const mesh = this.resources.meshes.get(id);
       if (mesh === undefined) {
         console.error(`Undefined mesh resource: ${id}`);
@@ -434,12 +430,9 @@ export class Renderer {
         vertexOffset: this.streamVertices(id, vertices).offset,
         indices: { lod0, lod1, lod2, lod3 },
       };
-      slot = this.meshes.add(id, meshData);
+      index = this.meshes.add(id, meshData);
     }
-    if (slot.offset === this.meshes.NULL) {
-      return this.meshes.NULL;
-    }
-    return Math.floor(slot.offset / slot.size);
+    return index;
   }
 
   draw() {
@@ -656,30 +649,34 @@ function packQuat(quat: Quat): number {
   );
 }
 
-function writeF32(dst: ArrayBuffer, offset: number, value: number): number {
+function writeF32(dst: ArrayBufferLike, offset: number, value: number): number {
   const slice = new Float32Array(dst, offset, 1);
   slice.set([value]);
   return slice.byteLength;
 }
 
-function writeU16(dst: ArrayBuffer, offset: number, value: number): number {
+function writeU16(dst: ArrayBufferLike, offset: number, value: number): number {
   const slice = new Uint16Array(dst, offset, 1);
   slice.set([value]);
   return slice.byteLength;
 }
 
-function writeU32(dst: ArrayBuffer, offset: number, value: number): number {
+function writeU32(dst: ArrayBufferLike, offset: number, value: number): number {
   const slice = new Uint32Array(dst, offset, 1);
   slice.set([value]);
   return slice.byteLength;
 }
 
-function writeVec3(dst: ArrayBuffer, offset: number, vec: Vec3): number {
+function writeVec3(dst: ArrayBufferLike, offset: number, vec: Vec3): number {
   const slice = new Float32Array(dst, offset, 3);
   slice.set([...vec]);
   return slice.byteLength;
 }
 
-function writeQuatU32(dst: ArrayBuffer, offset: number, quat: Quat): number {
+function writeQuatU32(
+  dst: ArrayBufferLike,
+  offset: number,
+  quat: Quat,
+): number {
   return writeU32(dst, offset, packQuat(quat));
 }
