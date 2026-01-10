@@ -1,11 +1,10 @@
-import { mat4, vec3, type Vec3 } from "wgpu-matrix";
-import { Engine } from "./lib/engine";
+import { mat4, vec3, type Mat4, type Vec3 } from "wgpu-matrix";
 import * as io from "./lib/io";
 import { Scene } from "./lib/scene";
 import { start, type InitState as StateInit, type State } from "./lib/start";
 import { Camera, Mesh, Reference } from "./lib/resource";
 import { Transform } from "./lib/transform";
-import { Entity } from "./lib/entity";
+import type { Renderer } from "./lib/renderer";
 
 const canvas: HTMLCanvasElement = document.querySelector("#canvas")!;
 
@@ -22,11 +21,11 @@ interface App {
   };
 }
 
-async function init(engine: Engine): Promise<StateInit<App>> {
-  console.log(engine.device.limits);
+async function init(renderer: Renderer): Promise<StateInit<App>> {
+  console.log(renderer.device.limits);
 
   // Check for shader compilation errors.
-  const messages = await engine.shaderCompilationMessages();
+  const messages = await renderer.shaderCompilationMessages();
   if (messages.info.length > 0) {
     console.log("--- Shader info messages ---");
     for (const msg of messages.info) {
@@ -48,49 +47,64 @@ async function init(engine: Engine): Promise<StateInit<App>> {
   }
 
   // Build/load the initial scene.
-  const scene = new Scene({
-    camera: Entity({
-      resource: Camera(),
-      transform: new Transform({
-        position: [0, 0, 10],
-      }).cameraAim([0, 0, 0]),
-    }),
-    origin: Entity({
-      resource: Reference("assets/cube.obj"),
-      transform: new Transform({ scale: [0.1, 0.1, 0.1] }),
-    }),
-    triangle1: Entity({
-      resource: Mesh({
-        id: "triangle-mesh",
-        vertices: [
-          [0, 0, 0, 1, 0, 0],
-          [1, 0, 0, 0, 1, 0],
-          [0, 1, 0, 0, 0, 1],
-        ],
-        indices: [0, 1, 2],
-      }),
-      transform: new Transform({
-        position: [1, 1, 1],
-      }),
-    }),
-    triangle2: Entity({
-      resource: Mesh({ id: "triangle-mesh" }),
-      transform: new Transform({
-        position: [-1, -1, -10],
-      }),
-    }),
-    sphere: Entity({
-      resource: Reference("assets/icosphere.obj"),
-      transform: new Transform({
-        position: [-2, 1, -3],
-        scale: [0.5, 0.5, 0.5],
-      }),
-    }),
-  });
+  const entities = {
+    tri: {
+      meshId: "triangle",
+    },
+    // camera: Entity({
+    //   resource: Camera(),
+    //   transform: new Transform({
+    //     position: [0, 0, 10],
+    //   }).cameraAim([0, 0, 0]),
+    // }),
+    // origin: Entity({
+    //   resource: Reference("assets/cube.obj"),
+    //   transform: new Transform({ scale: [0.1, 0.1, 0.1] }),
+    // }),
+    // triangle1: Entity({
+    //   resource: Mesh({
+    //     id: "triangle-mesh",
+    //     vertices: [
+    //       [0, 0, 0, 1, 0, 0],
+    //       [1, 0, 0, 0, 1, 0],
+    //       [0, 1, 0, 0, 0, 1],
+    //     ],
+    //     indices: [0, 1, 2],
+    //   }),
+    //   transform: new Transform({
+    //     position: [1, 1, 1],
+    //   }),
+    // }),
+    // triangle2: Entity({
+    //   resource: Mesh({ id: "triangle-mesh" }),
+    //   transform: new Transform({
+    //     position: [-1, -1, -10],
+    //   }),
+    // }),
+    // sphere: Entity({
+    //   resource: Reference("assets/icosphere.obj"),
+    //   transform: new Transform({
+    //     position: [-2, 1, -3],
+    //     scale: [0.5, 0.5, 0.5],
+    //   }),
+    // }),
+  };
+
+  const meshes = {
+    triangle: {
+      vertices: [
+        [0, 0, 0, 1, 0, 0],
+        [1, 0, 0, 0, 1, 0],
+        [0, 1, 0, 0, 0, 1],
+      ],
+      lod0: [0, 1, 2],
+    },
+  };
 
   // Return the initial state.
   return {
-    scene,
+    scene: Object.entries(entities),
+    meshes: Object.entries(meshes),
     app: {
       cursor: vec3.create(0, 0, 0),
       input: {
@@ -106,21 +120,21 @@ async function init(engine: Engine): Promise<StateInit<App>> {
   };
 }
 
-function resize(state: State<App>, width: number, height: number): State<App> {
-  const { camera } = state.scene.findCamera(["camera"]);
-  camera.resource.projection = mat4.perspective(
+function resize(projection: Mat4, width: number, height: number): Mat4 {
+  return mat4.perspective(
     100, // fieldOfView
     width / height, // aspect
     1, // zNear
     1000, // zFar
+    projection, // dst
   );
-  return state;
 }
 
 function update(state: State<App>): State<App> {
   const updateStart = performance.now();
 
-  const { camera } = state.scene.findCamera(["camera"]);
+  const renderer = state.renderer;
+  const camera = renderer.camera;
 
   const input = state.app.input;
   const mouse = input.mouse.poll();
@@ -131,11 +145,13 @@ function update(state: State<App>): State<App> {
       const speed = 0.5 * state.deltaTime;
       const delta = [-mouse.scroll.x * speed, mouse.scroll.y * speed, 0];
       camera.transform.translate(delta);
+      renderer.updateCameraViewProjection();
     } else if (keyboard.ctrl.held || keyboard.meta.held) {
       // Ctrl/Meta + scroll -> zoom camera
       const speed = 1.5 * state.deltaTime;
       const delta = [0, 0, (mouse.scroll.y - mouse.scroll.x) * speed];
       camera.transform.translate(delta);
+      renderer.updateCameraViewProjection();
     } else if (keyboard.alt.held) {
       // Alt + scroll -> rotate camera
       const speed = 0.2 * state.deltaTime;
@@ -143,6 +159,7 @@ function update(state: State<App>): State<App> {
         .yaw(-mouse.scroll.x * speed)
         .pitch(-mouse.scroll.y * speed)
         .alignUp();
+      renderer.updateCameraViewProjection();
     } else {
       // scroll -> orbit camera
       const speed = 0.5 * state.deltaTime;
@@ -150,14 +167,9 @@ function update(state: State<App>): State<App> {
       camera.transform
         .orbit(pivot, -mouse.scroll.x * speed, -mouse.scroll.y * speed)
         .alignUp();
+      renderer.updateCameraViewProjection();
     }
   }
-
-  mat4.multiply(
-    camera.resource.projection,
-    mat4.inverse(camera.transform.matrix),
-    state.globals.viewProjection,
-  );
 
   // Get metrics.
   const updateEnd = performance.now();

@@ -36,7 +36,7 @@ export class Transform {
     const size = 3 + 4 + 3; // pos vec3 + rot quat + scale vec3
     dst ??= new Float32Array(size);
     dst.set(this.getPosition(), 0);
-    dst.set(this.getOrientation(), 3);
+    dst.set(this.getRotation(), 3);
     dst.set(this.getScale(), 7);
     return dst;
   }
@@ -93,7 +93,7 @@ export class Transform {
     this.matrix[14]! = vec[2]!;
     return this;
   }
-  getOrientation(dst?: Quat): Quat {
+  getRotation(dst?: Quat): Quat {
     dst ??= quat.create();
     return quat.fromMat(this.matrix, dst);
   }
@@ -105,6 +105,11 @@ export class Transform {
       vec3.len(this.forward()),
     ]);
     return dst;
+  }
+  getScaleUniform(): number {
+    const scale = this.getScale();
+    const sum = scale.reduce((x, y) => x + y, 0);
+    return sum / scale.length;
   }
 
   distance(vec: Vec3Arg): number {

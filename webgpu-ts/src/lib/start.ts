@@ -1,13 +1,21 @@
-import type { Globals } from "./assets/globals";
-import { Engine } from "./engine";
-import { type Scene } from "./scene";
-import { Entity, type EntityID } from "./entity";
-import { Renderer } from "./renderer";
+import {
+  Renderer,
+  type Entity,
+  type EntityData,
+  type EntityId,
+  type Material,
+  type MaterialId,
+  type Mesh,
+  type MeshId,
+} from "./renderer";
 import { Reference } from "./resource";
 import { Transform } from "./transform";
+import type { Mat4 } from "wgpu-matrix";
 
 export interface InitState<a> {
-  scene: Scene;
+  scene?: [EntityId, Entity][];
+  meshes?: [MeshId, Mesh][];
+  materials?: [MaterialId, Material][];
   app: a;
 }
 
@@ -15,20 +23,19 @@ export interface State<a> {
   readonly frameNumber: number;
   readonly deltaTime: number;
   readonly now: number;
-  globals: Globals;
-  scene: Scene;
+  renderer: Renderer;
   app: a;
 }
 
 export async function start<a>(args: {
   canvas: HTMLCanvasElement;
-  init: (engine: Engine) => Promise<InitState<a>>;
-  resize?: (state: State<a>, width: number, height: number) => State<a>;
+  init: (renderer: Renderer) => Promise<InitState<a>>;
+  resize?: (projection: Mat4, width: number, height: number) => Mat4;
   update?: (state: State<a>) => State<a>;
   updateAfterDraw?: (state: State<a>) => State<a>;
-  camera?: EntityID;
+  camera?: EntityId;
 }) {
-  const resize = args.resize ?? ((s, _w, _h) => s);
+  const resize = args.resize ?? ((m, _w, _h) => m);
   const update = args.update ?? ((s) => s);
   const updateAfterDraw = args.updateAfterDraw ?? ((s) => s);
 
@@ -60,39 +67,44 @@ export async function start<a>(args: {
     alphaMode: "premultiplied",
   });
 
-  const engine = new Engine({ device, canvas: args.canvas, context });
-
-  const initialState = await args.init(engine);
+  const renderer = new Renderer({
+    device,
+    context,
+    width: args.canvas.width,
+    height: args.canvas.height,
+  });
+  const initialState = await args.init(renderer);
   let state: State<a> = {
-    scene: initialState.scene,
-    app: initialState.app,
-    globals: engine.globals,
     frameNumber: 0,
     deltaTime: 0,
     now: performance.now(),
+    renderer,
+    app: initialState.app,
   };
+  for (const [id, mesh] of initialState.meshes ?? []) {
+    renderer.resources.meshes.set(id, mesh);
+  }
+  for (const [id, material] of initialState.materials ?? []) {
+    renderer.resources.materials.set(id, material);
+  }
+  for (const [id, entity] of initialState.scene ?? []) {
+    renderer.add([id], entity);
+  }
 
-  const renderer = new Renderer({ device });
-  renderer.entities.set(Object.entries(initialState.scene.entities));
-  console.log(renderer);
-
-  // Browser automatically, resizes at start
-  // if (args.resize) {
-  //   state = args.resize(state, args.canvas.width, args.canvas.height);
-  // }
-  function render(now: number) {
+  function render(nowMilliseconds: number) {
+    const now = nowMilliseconds * 0.001;
     if (now === state.now) {
       return;
     }
     state = {
       ...state,
-      deltaTime: (now - state.now) * 0.001,
-      now: now,
+      deltaTime: now - state.now,
+      now,
       frameNumber: state.frameNumber + 1,
     };
 
     state = update(state);
-    engine.draw(state.scene, now);
+    renderer.draw();
     state = updateAfterDraw(state);
     requestAnimationFrame(render);
   }
@@ -131,9 +143,16 @@ export async function start<a>(args: {
         1,
         Math.min(height, device.limits.maxTextureDimension2D),
       );
-      state = resize(state, args.canvas.width, args.canvas.height);
-      engine.depthTexture.destroy();
-      engine.depthTexture = engine.createDepthTexture();
+      renderer.camera.projection = resize(
+        renderer.camera.projection,
+        args.canvas.width,
+        args.canvas.height,
+      );
+      renderer.depthTexture.destroy();
+      renderer.depthTexture = renderer.createDepthTexture(
+        args.canvas.width,
+        args.canvas.height,
+      );
       requestAnimationFrame(render);
     }
   });
