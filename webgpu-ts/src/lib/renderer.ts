@@ -99,13 +99,29 @@ export interface Entity {
   light?: undefined; // TODO
   children?: [EntityId, Entity][];
 }
-// TODO: optimize this to fit into 32b
 export interface EntityData {
   transform: Transform;
   parentIndex: EntityIndex;
   meshIndex: MeshIndex;
   materialIndex: MaterialIndex;
 }
+
+// TODO: Animation 128b
+// Base Track        | 16b | Clip A/B IDs, Times, and Crossfade Weight."
+// Action Layer      | 16b | "Layer Clip, Time, MaskID, and Alpha (The ""Carry"" layer)."
+// Motion Trajectory | 24b | "3x vec2<f32>: Current, 0.5s, and 1.0s Future Direction/Velocity."
+// IK / Grounding    | 16b | 4x f16 Height Targets for feet + 2x f16 Hips/Spine Offset.
+// Look-At/Head      | 12b | vec3<f32> World Space Coordinate for head/eye tracking.
+// Secondary Phys    | 16b | "Spring Stiffness, Damping, and External Force (Wind/Gravity)."
+// Attachment IDs    | 16b | 4x u32 Entity IDs of objects glued to this character.
+// LOD & Metadata    | 12b | "SkeletonID, Playback Speed, and Bitflags (Loop, Reverse, Ragdoll)."
+
+// TODO: Skeleton, resource
+// name: string
+// parent: u32
+// inverse_pose_matrix: mat4
+
+// TODO: Bones, per-entity (mat4)
 
 export class Renderer {
   static readonly Binding = {
