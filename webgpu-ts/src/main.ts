@@ -2,6 +2,7 @@ import { mat4, vec3, type Mat4, type Vec3 } from "wgpu-matrix";
 import * as io from "./lib/io";
 import { start, type InitState as StateInit, type State } from "./lib/start";
 import type { Renderer } from "./lib/renderer";
+import { Transform } from "./lib/transform";
 
 const canvas: HTMLCanvasElement = document.querySelector("#canvas")!;
 
@@ -102,10 +103,13 @@ async function init(renderer: Renderer): Promise<StateInit<App>> {
 
   // Return the initial state.
   return {
+    camera: {
+      transform: new Transform({ position: [0, 0, 5] }),
+    },
     scene: Object.entries(entities),
     meshes: Object.entries(meshes),
     app: {
-      cursor: vec3.create(0, 0, 0),
+      cursor: vec3.create(),
       input: {
         mouse: new io.Mouse(),
         keyboard: new io.Keyboard(),

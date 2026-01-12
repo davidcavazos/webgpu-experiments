@@ -8,8 +8,13 @@ import {
   type MeshId,
 } from "./renderer";
 import type { Mat4 } from "wgpu-matrix";
+import type { Transform } from "./transform";
 
 export interface InitState<a> {
+  camera?: {
+    projection?: Mat4;
+    transform?: Transform;
+  };
   scene?: [EntityId, Entity][];
   meshes?: [MeshId, Mesh][];
   materials?: [MaterialId, Material][];
@@ -78,6 +83,12 @@ export async function start<a>(args: {
     renderer,
     app: initialState.app,
   };
+  if (initialState.camera?.projection) {
+    renderer.camera.projection = initialState.camera.projection;
+  }
+  if (initialState.camera?.transform) {
+    renderer.camera.transform = initialState.camera.transform;
+  }
   for (const [id, mesh] of initialState.meshes ?? []) {
     renderer.meshes.resources.set(id, mesh);
   }
@@ -145,6 +156,7 @@ export async function start<a>(args: {
         args.canvas.width,
         args.canvas.height,
       );
+      renderer.updateCameraViewProjection();
       renderer.depthTexture.destroy();
       renderer.depthTexture = renderer.createDepthTexture(
         args.canvas.width,

@@ -257,7 +257,8 @@ export class Renderer {
       world: this.device.createBuffer({
         label: "Entities world",
         size: this.device.limits.maxStorageBufferBindingSize,
-        usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_SRC,
+        // TODO: COPY_DST -> COPY_SRC
+        usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
       }),
       bounds: this.device.createBuffer({
         label: "Entities bounds",
@@ -353,9 +354,8 @@ export class Renderer {
       };`,
       EntityWorld: /* wgsl */ `
       struct EntityWorld {
-        position: vec3f, // +12 = 12
-        rotation: vec4f, // +16 = 28
-        scale: f32,      //  +4 = 32
+        position_scale: vec4f, // +16 = 16
+        rotation: vec4f,       // +16 = 32
       };`,
       EntityBounds: /* wgsl */ `
       struct EntityBounds {
@@ -368,18 +368,41 @@ export class Renderer {
 
     const functions = {
       unpack_quat: /* wgsl */ `
-      fn unpack_quat(packed: u32) -> vec4<f32> {
+      fn unpack_quat(packed: u32) -> vec4f {
         let max_idx = packed >> 30u;
         let a = f32((packed >> 20u) & 1023u) / 1023.0 * 1.414214 - 0.707107;
         let b = f32((packed >> 10u) & 1023u) / 1023.0 * 1.414214 - 0.707107;
         let c = f32(packed & 1023u) / 1023.0 * 1.414214 - 0.707107;
         let d = sqrt(1.0 - (a*a + b*b + c*c));
 
-        if (max_idx == 0u) { return vec4<f32>(d, a, b, c); }
-        if (max_idx == 1u) { return vec4<f32>(a, d, b, c); }
-        if (max_idx == 2u) { return vec4<f32>(a, b, d, c); }
+        if (max_idx == 0u) { return vec4f(d, a, b, c); }
+        if (max_idx == 1u) { return vec4f(a, d, b, c); }
+        if (max_idx == 2u) { return vec4f(a, b, d, c); }
         return vec4<f32>(a, b, c, d);
       }`,
+      transform_matrix: /* wgsl */ `
+      fn transform_matrix(pos: vec3f, rotation: vec4f, scale: f32) -> mat4x4f {
+        let x = rotation.x; let y = rotation.y; let z = rotation.z; let w = rotation.w;
+        let x2 = x + x; let y2 = y + y; let z2 = z + z;
+
+        let xx = x * x2;
+        let yx = y * x2;
+        let yy = y * y2;
+        let zx = z * x2;
+        let zy = z * y2;
+        let zz = z * z2;
+        let wx = w * x2;
+        let wy = w * y2;
+        let wz = w * z2;
+
+        return mat4x4f(
+          vec4f(1 - yy - zz,      x + wz,     zx - wy, 0), // right 
+          vec4f(     x - wz, 1 - xx - zz,     zy + wx, 0), // up
+          vec4f(    zx + wy,     zy - wx, 1 - xx - yy, 0), // forward 
+          vec4f(      pos.x,       pos.y,       pos.z, 1),
+        );
+      }
+      `,
     };
 
     this.passes = {
@@ -444,20 +467,22 @@ ${functions.unpack_quat}
           {
             type: "read-only-storage",
             visibility: GPUShaderStage.VERTEX,
-            buffer: this.entities.local.buffer,
+            buffer: this.entities.world,
           },
         ],
         code: /* wgsl */ `
 
 //---- START render:opaque.wgsl ----\\
 ${types.Camera}
-${types.EntityLocal}
+${types.EntityWorld}
 
 alias EntityIndex = u32;
 
 @group(0) @binding(0) var<uniform> camera: Camera;
 @group(0) @binding(1) var<storage, read> instances: array<EntityIndex>;
-@group(0) @binding(2) var<storage, read> entities: array<EntityLocal>;
+@group(0) @binding(2) var<storage, read> entities_world: array<EntityWorld>;
+
+${functions.transform_matrix}
 
 struct VertexInput {
   @location(0) position: vec3f,
@@ -470,27 +495,99 @@ struct VertexOutput {
 };
 
 @vertex fn vertex(
-  // @builtin(vertex_index) vertex_index : u32,
+  @builtin(vertex_index) vertex_index : u32,
   @builtin(instance_index) instance_id: u32,
   input: VertexInput
 ) -> VertexOutput {
-  var entity_index = instances[instance_id];
-  // var instance = instances[model.instance_offset + instance_id];
+  let entity_index = instances[instance_id];
+  let entity_world = entities_world[entity_index];
+  let position = entity_world.position_scale.xyz;
+  let scale = entity_world.position_scale.w;
+  let rotation = entity_world.rotation;
+  let world_matrix = transform_matrix(position, rotation, scale);
   var output: VertexOutput;
-  // output.position = camera.view_projection * instance.transform * vec4f(input.position, 1.0);
-  // output.normal = input.normal;
+  output.position = camera.view_projection * world_matrix * vec4f(input.position, 1.0);
+  output.normal = input.normal;
   return output;
 }
 
 @fragment fn fragment(input: VertexOutput) -> @location(0) vec4f {
-  return vec4f(1, 1, 1, 1);
   // return vec4f(input.normal * 0.5 + 0.5, 1);
+  return vec4f(input.normal, 1);
 }
 
 //---- END render:opaque.wgsl ----\\
 `,
       }),
     };
+  }
+
+  draw() {
+    const encoder = this.device.createCommandEncoder();
+    // Compute flatten
+    this.passes.flatten.dispatch(
+      encoder,
+      Math.ceil(this.entities.local.size() / 64),
+    );
+
+    // TODO: REMOVE THIS
+    {
+      // Compute flatten
+      const pos = [0, 0, 0];
+      const rot = [0, 0, 0, 1];
+      const scale = 1;
+      this.device.queue.writeBuffer(
+        this.entities.world,
+        0, // offset
+        new Float32Array([...pos, scale, ...rot]),
+      );
+
+      // Compute visible
+      const instanceCountOffset = 4; // set by 'visible' pass
+      const instanceCount = new Uint32Array([1]);
+      this.device.queue.writeBuffer(
+        this.draws.opaque.buffer,
+        instanceCountOffset,
+        instanceCount,
+      );
+
+      // Compute instances
+      const firstInstance = 0;
+      const instances = new Uint32Array([0]);
+      this.device.queue.writeBuffer(
+        this.draws.instances,
+        firstInstance * Uint32Array.BYTES_PER_ELEMENT,
+        instances,
+      );
+    }
+
+    // Render opaque
+    const pass = encoder.beginRenderPass({
+      colorAttachments: [
+        {
+          view: this.context.getCurrentTexture().createView(),
+          clearValue: { r: 0, g: 0, b: 0, a: 1 },
+          loadOp: "clear",
+          storeOp: "store",
+        },
+      ],
+      depthStencilAttachment: {
+        view: this.depthTexture.createView(),
+        depthClearValue: 1.0,
+        depthLoadOp: "clear",
+        depthStoreOp: "store",
+      },
+    });
+    pass.setPipeline(this.passes.opaque.pipeline);
+    pass.setBindGroup(0, this.passes.opaque.bindGroup);
+    pass.setVertexBuffer(0, this.vertices.buffer);
+    pass.setIndexBuffer(this.indices.buffer, "uint32");
+    for (const slot of this.draws.opaque.values()) {
+      pass.drawIndexedIndirect(this.draws.opaque.buffer, slot.offset);
+    }
+
+    pass.end();
+    this.device.queue.submit([encoder.finish()]);
   }
 
   createDepthTexture(width: number, height: number): GPUTexture {
@@ -516,7 +613,6 @@ struct VertexOutput {
       this.camera.buffer,
       Renderer.CAMERA_VIEW_PROJECTION_OFFSET,
       this.camera.viewProjection as Float32Array<ArrayBuffer>,
-      Renderer.CAMERA_VIEW_PROJECTION_SIZE,
     );
   }
 
@@ -648,64 +744,6 @@ struct VertexOutput {
       const lod3 = this.setIndices(`${id}:3`, draw, mesh.lod3, lod2);
     }
     return index;
-  }
-
-  draw() {
-    const encoder = this.device.createCommandEncoder();
-    // Compute flatten
-    this.passes.flatten.dispatch(
-      encoder,
-      Math.ceil(this.entities.local.size() / 64),
-    );
-
-    // TODO: REMOVE THIS
-    {
-      // Compute visible
-      const instanceCountOffset = 4; // set by 'visible' pass
-      const instanceCount = new Uint32Array([1]);
-      this.device.queue.writeBuffer(
-        this.draws.opaque.buffer,
-        instanceCountOffset,
-        instanceCount,
-      );
-
-      // Compute instances
-      const firstInstance = 0;
-      const instances = new Uint32Array([0]);
-      this.device.queue.writeBuffer(
-        this.draws.instances,
-        firstInstance * Uint32Array.BYTES_PER_ELEMENT,
-        instances,
-      );
-    }
-
-    // Render opaque
-    const pass = encoder.beginRenderPass({
-      colorAttachments: [
-        {
-          view: this.context.getCurrentTexture().createView(),
-          clearValue: { r: 0, g: 0, b: 0, a: 1 },
-          loadOp: "clear",
-          storeOp: "store",
-        },
-      ],
-      depthStencilAttachment: {
-        view: this.depthTexture.createView(),
-        depthClearValue: 1.0,
-        depthLoadOp: "clear",
-        depthStoreOp: "store",
-      },
-    });
-    pass.setPipeline(this.passes.opaque.pipeline);
-    pass.setBindGroup(0, this.passes.opaque.bindGroup);
-    pass.setVertexBuffer(0, this.vertices.buffer);
-    pass.setIndexBuffer(this.indices.buffer, "uint32");
-    for (const slot of this.draws.opaque.values()) {
-      pass.drawIndexedIndirect(this.draws.opaque.buffer, slot.offset);
-    }
-
-    pass.end();
-    this.device.queue.submit([encoder.finish()]);
   }
 
   // ---------------
