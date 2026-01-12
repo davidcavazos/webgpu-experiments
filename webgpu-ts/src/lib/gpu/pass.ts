@@ -11,7 +11,11 @@ export class GPUPass {
     args: {
       label?: string;
       code?: string;
-      bindings: { type: GPUBufferBindingType; buffer: GPUBuffer }[];
+      bindings: {
+        type: GPUBufferBindingType;
+        visibility: number;
+        buffer: GPUBuffer;
+      }[];
     },
   ) {
     this.device = device;
@@ -19,9 +23,9 @@ export class GPUPass {
     const bindings = args.bindings ?? [];
     this.bindGroupLayout = this.device.createBindGroupLayout({
       label: `${this.label} layout`,
-      entries: bindings.map(({ type }, i) => ({
+      entries: bindings.map(({ type, visibility }, i) => ({
         binding: i,
-        visibility: GPUShaderStage.COMPUTE,
+        visibility,
         buffer: { type },
       })),
     });
@@ -34,6 +38,7 @@ export class GPUPass {
       })),
     });
     this.shaderModule = this.device.createShaderModule({
+      label: this.label,
       code: args.code ?? "",
     });
   }

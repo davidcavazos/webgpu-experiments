@@ -7,14 +7,20 @@ export class GPUPassCompute extends GPUPass {
     args: {
       label?: string;
       code?: string;
-      bindings: { type: GPUBufferBindingType; buffer: GPUBuffer }[];
+      bindings: {
+        type: GPUBufferBindingType;
+        buffer: GPUBuffer;
+      }[];
       compute?: GPUProgrammableStage;
-      workgroupSizeX?: number;
-      workgroupSizeY?: number;
-      workgroupSizeZ?: number;
     },
   ) {
-    super(device, args);
+    super(device, {
+      ...args,
+      bindings: args.bindings.map((binding) => ({
+        ...binding,
+        visibility: GPUShaderStage.COMPUTE,
+      })),
+    });
     this.pipeline = this.device.createComputePipeline({
       label: `[compute] ${this.label} pipeline`,
       layout: this.device.createPipelineLayout({

@@ -6,6 +6,16 @@ import { GPUStore } from "./gpu/store";
 import { GPUPassCompute as GPUComputePass } from "./gpu/pass-compute";
 import { GPUPassRender as GPURenderPass } from "./gpu/pass-render";
 
+const DEBUG = {
+  CAMERA_CHANGE: false,
+  VERTICES_ADD: true,
+  INDICES_ADD: true,
+  ENTITY_ADD: true,
+  MESH_ADD: true,
+  MATERIAL_ADD: true,
+  DRAW_ADD: true,
+};
+
 export const MAX_U16_VALUE = 0xffff;
 export const MAX_U32_VALUE = 0xffffffff;
 
@@ -15,6 +25,11 @@ export type FilePattern = string;
 export type MeshId = string;
 export type MeshLodId = string;
 export type MeshIndex = number;
+export interface MeshBounds {
+  center: Vec3; // 12b
+  extents: Vec3; // 12b
+  radius: number; // 4b f32
+}
 export interface Mesh {
   fromFile?: {
     filename: string;
@@ -29,22 +44,16 @@ export interface Mesh {
 }
 export interface MeshData {
   bounds: MeshBounds; // 28b
-  vertexOffset: number; // 4b u32
-  indices: {
-    lod0: MeshIndices; // 8b
-    lod1: MeshIndices; // 8b
-    lod2: MeshIndices; // 8b
-    lod3: MeshIndices; // 8b
-  };
 }
-export interface MeshBounds {
-  center: Vec3; // 12b
-  extents: Vec3; // 12b
-  radius: number; // 4b f32
-}
-export interface MeshIndices {
-  offset: number; // 4b u32
-  count: number; // 4b u32
+export interface DrawCmd {
+  // This order seems easier to reason about in the flow of things.
+  // The number like [12] is the offset in bytes expected.
+  // https://developer.mozilla.org/en-US/docs/Web/API/GPURenderPassEncoder/drawIndexedIndirect
+  baseVertex: GPUSize32; //    [12] const from creation
+  firstIndex: GPUSize32; //    [ 8] const from creation
+  indexCount: GPUSize32; //    [ 0] const from creation
+  instanceCount: GPUSize32; // [ 4] set by 'visible' pass
+  firstInstance: GPUSize32; // [16] set by 'instances' pass
 }
 function getMeshBounds(vertices: number[][]): MeshBounds {
   const [head, ...tail] = vertices;
@@ -167,6 +176,11 @@ export class Renderer {
   };
   // lights
   // bounds
+  draws: {
+    opaque: GPUArena<MeshLodId, DrawCmd>;
+    // TODO: maybe each draw pass needs its own instances buffer?
+    instances: GPUBuffer;
+  };
   depthTexture: GPUTexture;
   passes: {
     flatten: GPUComputePass;
@@ -204,8 +218,7 @@ export class Renderer {
       }),
     };
 
-    this.vertices = new GPUArena({
-      device: this.device,
+    this.vertices = new GPUArena(this.device, {
       label: "Vertices",
       size: this.device.limits.maxBufferSize,
       usage: GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST,
@@ -215,8 +228,7 @@ export class Renderer {
       },
     });
 
-    this.indices = new GPUArena({
-      device: this.device,
+    this.indices = new GPUArena(this.device, {
       label: "Indices",
       size: this.device.limits.maxBufferSize,
       usage: GPUBufferUsage.INDEX | GPUBufferUsage.COPY_DST,
@@ -226,8 +238,7 @@ export class Renderer {
     });
 
     this.entities = {
-      local: new GPUStore({
-        device: this.device,
+      local: new GPUStore(this.device, {
         label: "Entities local",
         size: this.device.limits.maxStorageBufferBindingSize,
         usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
@@ -255,42 +266,60 @@ export class Renderer {
       }),
     };
     for (const [id, entity] of args.scene ?? []) {
-      this.add([id], entity);
+      this.setEntity([id], entity);
     }
 
     this.meshes = {
       resources: new Map(args.resources?.meshes),
-      data: new GPUStore({
-        device: this.device,
+      data: new GPUStore(this.device, {
         label: "Meshes",
-        size: this.device.limits.maxStorageBufferBindingSize,
+        size: 32 * MAX_U16_VALUE,
         usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
-        stride: 64,
+        stride: 32,
         serialize: (mesh, dst) => {
           let offset = 0;
-          offset += writeVec3(dst, offset, mesh.bounds.center); //     +12 = 12
-          offset += writeVec3(dst, offset, mesh.bounds.extents); //    +12 = 24
-          offset += writeF32(dst, offset, mesh.bounds.radius); //       +4 = 28
-          offset += writeU32(dst, offset, mesh.vertexOffset); //        +4 = 32
-          offset += writeU32(dst, offset, mesh.indices.lod0.offset); // +4 = 36
-          offset += writeU32(dst, offset, mesh.indices.lod0.count); //  +4 = 40
-          offset += writeU32(dst, offset, mesh.indices.lod1.offset); // +4 = 44
-          offset += writeU32(dst, offset, mesh.indices.lod1.count); //  +4 = 48
-          offset += writeU32(dst, offset, mesh.indices.lod2.offset); // +4 = 52
-          offset += writeU32(dst, offset, mesh.indices.lod2.count); //  +4 = 56
-          offset += writeU32(dst, offset, mesh.indices.lod3.offset); // +4 = 60
-          offset += writeU32(dst, offset, mesh.indices.lod3.count); //  +4 = 64
-          // total 64 bytes, 0 bytes free
+          offset += writeVec3(dst, offset, mesh.bounds.center); //  +12 = 12
+          offset += writeVec3(dst, offset, mesh.bounds.extents); // +12 = 24
+          offset += writeF32(dst, offset, mesh.bounds.radius); //    +4 = 28
+          // total 32 bytes, 4 bytes free
         },
+      }),
+    };
+    this.draws = {
+      // https://developer.mozilla.org/en-US/docs/Web/API/GPURenderPassEncoder/drawIndexedIndirect
+      opaque: new GPUArena(this.device, {
+        label: "Meshes draws",
+        size: 20 * MAX_U16_VALUE,
+        // TODO: COPY_DST -> COPY_SRC
+        usage: GPUBufferUsage.INDIRECT | GPUBufferUsage.COPY_DST,
+        serialize: (draw) => {
+          const dst = new ArrayBuffer(20);
+          let offset = 0;
+          offset += writeU32(dst, offset, draw.indexCount); //    +4 = 4  [ 0] const from creation
+          offset += writeU32(dst, offset, draw.instanceCount); // +4 = 8  [ 4] set by 'visible' pass
+          offset += writeU32(dst, offset, draw.firstIndex); //    +4 = 12 [ 8] const from creation
+          offset += writeU32(dst, offset, draw.baseVertex); //    +4 = 16 [12] const from creation
+          offset += writeU32(dst, offset, draw.firstInstance); // +4 = 20 [16] set by 'instances' pass
+          // total 20 bytes, 0 bytes free
+          return dst;
+        },
+      }),
+      instances: this.device.createBuffer({
+        label: "Draws instances",
+        size: this.device.limits.maxStorageBufferBindingSize / 8, // only u32, limited by entities buffer size
+        // TODO: COPY_DST -> COPY_SRC
+        usage:
+          GPUBufferUsage.STORAGE |
+          GPUBufferUsage.VERTEX |
+          GPUBufferUsage.COPY_DST,
       }),
     };
 
     this.materials = {
       resources: new Map(args.resources?.materials),
-      data: new GPUStore({
-        device: this.device,
+      data: new GPUStore(this.device, {
         label: "Materials",
-        size: this.device.limits.maxStorageBufferBindingSize,
+        size: 32 * 0xffff, // u16 index, so max size is 0xffff
         usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
         stride: 32,
         serialize: (material) => {},
@@ -364,7 +393,7 @@ export class Renderer {
         ],
         code: /* wgsl */ `
 
-//---- START compute/flatten.wgsl ----\\
+//---- START compute:flatten.wgsl ----\\
 ${types.Sizes};
 ${types.EntityLocal}
 ${types.EntityWorld}
@@ -385,8 +414,8 @@ ${functions.unpack_quat}
     return;
   }
 }
-//---- END compute/flatten.wgsl ----\\
 
+//---- END compute:flatten.wgsl ----\\
 `,
       }),
 
@@ -402,17 +431,33 @@ ${functions.unpack_quat}
           format: "depth24plus",
         },
         bindings: [
-          { type: "uniform", buffer: this.camera.buffer },
-          { type: "read-only-storage", buffer: this.entities.local.buffer },
+          {
+            type: "uniform",
+            visibility: GPUShaderStage.VERTEX,
+            buffer: this.camera.buffer,
+          },
+          {
+            type: "read-only-storage",
+            visibility: GPUShaderStage.VERTEX,
+            buffer: this.draws.instances,
+          },
+          {
+            type: "read-only-storage",
+            visibility: GPUShaderStage.VERTEX,
+            buffer: this.entities.local.buffer,
+          },
         ],
         code: /* wgsl */ `
 
-//---- START render/opaque.wgsl ----\\
+//---- START render:opaque.wgsl ----\\
 ${types.Camera}
 ${types.EntityLocal}
 
+alias EntityIndex = u32;
+
 @group(0) @binding(0) var<uniform> camera: Camera;
-@group(0) @binding(1) var<storage, read> entities: array<EntityLocal>;
+@group(0) @binding(1) var<storage, read> instances: array<EntityIndex>;
+@group(0) @binding(2) var<storage, read> entities: array<EntityLocal>;
 
 struct VertexInput {
   @location(0) position: vec3f,
@@ -429,6 +474,7 @@ struct VertexOutput {
   @builtin(instance_index) instance_id: u32,
   input: VertexInput
 ) -> VertexOutput {
+  var entity_index = instances[instance_id];
   // var instance = instances[model.instance_offset + instance_id];
   var output: VertexOutput;
   // output.position = camera.view_projection * instance.transform * vec4f(input.position, 1.0);
@@ -440,8 +486,8 @@ struct VertexOutput {
   return vec4f(1, 1, 1, 1);
   // return vec4f(input.normal * 0.5 + 0.5, 1);
 }
-//---- END render/opaque.wgsl ----\\
 
+//---- END render:opaque.wgsl ----\\
 `,
       }),
     };
@@ -463,6 +509,9 @@ struct VertexOutput {
       mat4.inverse(this.camera.transform.matrix),
       this.camera.viewProjection,
     );
+    if (DEBUG.CAMERA_CHANGE) {
+      console.debug("[debug] camera.viewProjection", this.camera.projection);
+    }
     this.device.queue.writeBuffer(
       this.camera.buffer,
       Renderer.CAMERA_VIEW_PROJECTION_OFFSET,
@@ -471,55 +520,97 @@ struct VertexOutput {
     );
   }
 
-  add(path: EntityId[], entity: Entity, parentIndex?: number) {
+  setEntity(
+    path: EntityId[],
+    entity: Entity,
+    parentIndex?: number,
+  ): EntityIndex {
     const id = path.join("/");
-    const entityData = {
-      transform: entity.transform ?? new Transform(),
-      meshIndex: this.streamMesh(entity.meshId),
-      materialIndex: this.materials.data.NULL,
-      parentIndex: parentIndex ?? this.entities.local.NULL,
-    };
-    const index = this.entities.local.add(id, entityData);
-    this.device.queue.writeBuffer(
-      this.sizes,
-      Renderer.SIZES_ENTITIES.offset,
-      new Uint32Array([this.entities.local.size()]),
-    );
-    for (const [childId, child] of entity.children ?? []) {
-      this.add([...path, childId], child, index);
+    let index = this.entities.local.get(id);
+    if (index === undefined) {
+      const entityData = {
+        transform: entity.transform ?? new Transform(),
+        meshIndex: this.setMesh(entity.meshId),
+        materialIndex: this.materials.data.NULL,
+        parentIndex: parentIndex ?? this.entities.local.NULL,
+      };
+      index = this.entities.local.add(id, entityData);
+      this.device.queue.writeBuffer(
+        this.sizes,
+        Renderer.SIZES_ENTITIES.offset,
+        new Uint32Array([this.entities.local.size()]),
+      );
+      for (const [childId, child] of entity.children ?? []) {
+        this.setEntity([...path, childId], child, index);
+      }
     }
+    return index;
   }
 
-  streamVertices(id: MeshId, vertices: number[][]): GPUArenaSlot {
+  setVertices(id: MeshId, vertices: number[][]): GPUArenaSlot {
     let slot = this.vertices.get(id);
     if (slot === undefined) {
       if (vertices.length === 0) {
         return { offset: this.vertices.NULL, size: 0 };
       }
       slot = this.vertices.add(id, vertices);
+      if (DEBUG.VERTICES_ADD) {
+        console.debug("[debug] vertices:", id, vertices, slot);
+      }
     }
     return slot;
   }
 
-  streamIndices(
+  setIndices(
     id: MeshLodId,
-    indices: number[],
-    fallback?: MeshIndices,
-  ): MeshIndices {
+    draw: { arena: GPUArena<MeshLodId, DrawCmd>; baseVertex: number },
+    indices: number[] | undefined,
+    fallback?: GPUArenaSlot,
+  ): GPUArenaSlot {
     let slot = this.indices.get(id);
     if (slot === undefined) {
-      if (indices.length === 0) {
+      if (!indices || indices.length === 0) {
         if (fallback) {
+          const cmd = {
+            baseVertex: draw.baseVertex,
+            firstIndex: Math.floor(
+              fallback.offset / Uint32Array.BYTES_PER_ELEMENT,
+            ),
+            indexCount: Math.floor(
+              fallback.size / Uint32Array.BYTES_PER_ELEMENT,
+            ),
+            firstInstance: 0,
+            instanceCount: 0,
+          };
+          draw.arena.add(id, cmd);
+          if (DEBUG.DRAW_ADD) {
+            console.debug("[debug] draw:", id, cmd);
+          }
           return fallback;
         }
-        return { offset: this.indices.NULL, count: 0 };
+        return { offset: this.indices.NULL, size: 0 };
       }
       slot = this.indices.add(id, indices);
+      if (DEBUG.INDICES_ADD) {
+        console.debug("[debug] indices:", id, indices, slot);
+      }
+      // https://developer.mozilla.org/en-US/docs/Web/API/GPURenderPassEncoder/drawIndexedIndirect
+      const cmd = {
+        baseVertex: draw.baseVertex,
+        firstIndex: Math.floor(slot.offset / Uint32Array.BYTES_PER_ELEMENT),
+        indexCount: Math.floor(slot.size / Uint32Array.BYTES_PER_ELEMENT),
+        instanceCount: 0, // set by 'visible' pass
+        firstInstance: 0, // start instance_id at 0
+      };
+      draw.arena.add(id, cmd);
+      if (DEBUG.DRAW_ADD) {
+        console.debug("[debug] draw:", id, cmd);
+      }
     }
-    return { offset: slot.offset, count: indices.length };
+    return slot;
   }
 
-  streamMesh(id: MeshId | undefined): MeshIndex {
+  setMesh(id: MeshId | undefined): MeshIndex {
     if (id === undefined) {
       return this.meshes.data.NULL;
     }
@@ -534,14 +625,8 @@ struct VertexOutput {
         console.error("TODO: Renderer.streamMesh fromFile");
       }
       const vertices = mesh.vertices ?? [];
-      const lod0 = this.streamIndices(`${id}:0`, mesh.lod0 ?? []);
-      const lod1 = this.streamIndices(`${id}:1`, mesh.lod1 ?? [], lod0);
-      const lod2 = this.streamIndices(`${id}:2`, mesh.lod2 ?? [], lod1);
-      const lod3 = this.streamIndices(`${id}:3`, mesh.lod3 ?? [], lod2);
       const meshData: MeshData = {
         bounds: mesh.bounds ?? getMeshBounds(vertices),
-        vertexOffset: this.streamVertices(id, vertices).offset,
-        indices: { lod0, lod1, lod2, lod3 },
       };
       index = this.meshes.data.add(id, meshData);
       this.device.queue.writeBuffer(
@@ -549,6 +634,18 @@ struct VertexOutput {
         Renderer.SIZES_MESHES.offset,
         new Uint32Array([this.meshes.data.size()]),
       );
+      if (DEBUG.MESH_ADD) {
+        console.debug("[debug] mesh:", id, meshData, index);
+      }
+      const draw = {
+        // TODO: check material to decide to which arena it goes to.
+        arena: this.draws.opaque,
+        baseVertex: Math.floor(this.setVertices(id, vertices).offset / 32),
+      };
+      const lod0 = this.setIndices(`${id}:0`, draw, mesh.lod0);
+      const lod1 = this.setIndices(`${id}:1`, draw, mesh.lod1, lod0);
+      const lod2 = this.setIndices(`${id}:2`, draw, mesh.lod2, lod1);
+      const lod3 = this.setIndices(`${id}:3`, draw, mesh.lod3, lod2);
     }
     return index;
   }
@@ -560,6 +657,27 @@ struct VertexOutput {
       encoder,
       Math.ceil(this.entities.local.size() / 64),
     );
+
+    // TODO: REMOVE THIS
+    {
+      // Compute visible
+      const instanceCountOffset = 4; // set by 'visible' pass
+      const instanceCount = new Uint32Array([1]);
+      this.device.queue.writeBuffer(
+        this.draws.opaque.buffer,
+        instanceCountOffset,
+        instanceCount,
+      );
+
+      // Compute instances
+      const firstInstance = 0;
+      const instances = new Uint32Array([0]);
+      this.device.queue.writeBuffer(
+        this.draws.instances,
+        firstInstance * Uint32Array.BYTES_PER_ELEMENT,
+        instances,
+      );
+    }
 
     // Render opaque
     const pass = encoder.beginRenderPass({
@@ -582,7 +700,9 @@ struct VertexOutput {
     pass.setBindGroup(0, this.passes.opaque.bindGroup);
     pass.setVertexBuffer(0, this.vertices.buffer);
     pass.setIndexBuffer(this.indices.buffer, "uint32");
-    // TODO: draw indexed
+    for (const slot of this.draws.opaque.values()) {
+      pass.drawIndexedIndirect(this.draws.opaque.buffer, slot.offset);
+    }
 
     pass.end();
     this.device.queue.submit([encoder.finish()]);

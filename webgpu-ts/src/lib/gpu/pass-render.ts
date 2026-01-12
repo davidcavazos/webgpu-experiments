@@ -32,7 +32,11 @@ export class GPUPassRender extends GPUPass {
     args: {
       label?: string;
       code?: string;
-      bindings: { type: GPUBufferBindingType; buffer: GPUBuffer }[];
+      bindings: {
+        type: GPUBufferBindingType;
+        visibility?: number;
+        buffer: GPUBuffer;
+      }[];
       vertex?: Partial<GPUVertexState>;
       fragment?: Partial<GPUFragmentState> | null;
       primitive?: GPUPrimitiveState;
@@ -40,7 +44,14 @@ export class GPUPassRender extends GPUPass {
       multisample?: GPUMultisampleState;
     },
   ) {
-    super(device, args);
+    super(device, {
+      ...args,
+      bindings: args.bindings.map((binding) => ({
+        ...binding,
+        visibility:
+          binding.visibility ?? GPUShaderStage.VERTEX | GPUShaderStage.FRAGMENT,
+      })),
+    });
     this.pipeline = this.device.createRenderPipeline({
       label: `[render] ${this.label} pipeline`,
       layout: this.device.createPipelineLayout({

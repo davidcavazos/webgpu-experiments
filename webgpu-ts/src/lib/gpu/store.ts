@@ -8,17 +8,19 @@ export class GPUStore<k, v> {
   readonly serialize: (value: v, dst: ArrayBufferLike) => void;
   allocations: Map<k, GPUStoreIndex>;
   freeList: GPUStoreIndex[];
-  constructor(args: {
-    device: GPUDevice;
-    label?: string;
-    size: number;
-    usage: number;
-    stride: number;
-    serialize: (value: v, dst: ArrayBufferLike) => void;
-    NULL?: number;
-  }) {
+  constructor(
+    device: GPUDevice,
+    args: {
+      label?: string;
+      size: number;
+      usage: number;
+      stride: number;
+      serialize: (value: v, dst: ArrayBufferLike) => void;
+      NULL?: number;
+    },
+  ) {
     this.NULL = args.NULL ?? 0xffffffff;
-    this.device = args.device;
+    this.device = device;
     this.buffer = this.device.createBuffer({
       label: args.label,
       size: args.size,
@@ -41,6 +43,9 @@ export class GPUStore<k, v> {
   }
   keys(): MapIterator<k> {
     return this.allocations.keys();
+  }
+  values(): MapIterator<number> {
+    return this.allocations.values();
   }
   entries(): MapIterator<[k, GPUStoreIndex]> {
     return this.allocations.entries();

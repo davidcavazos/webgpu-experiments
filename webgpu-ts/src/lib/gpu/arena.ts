@@ -10,16 +10,18 @@ export class GPUArena<k, v> {
   readonly serialize: (value: v) => BufferSource;
   allocations: Map<k, GPUArenaSlot>;
   freeList: GPUArenaSlot[];
-  constructor(args: {
-    device: GPUDevice;
-    label?: string;
-    size: number;
-    usage: number;
-    serialize: (value: v) => BufferSource;
-    NULL?: number;
-  }) {
+  constructor(
+    device: GPUDevice,
+    args: {
+      label?: string;
+      size: number;
+      usage: number;
+      serialize: (value: v) => BufferSource;
+      NULL?: number;
+    },
+  ) {
     this.NULL = args.NULL ?? 0xffffffff;
-    this.device = args.device;
+    this.device = device;
     this.buffer = this.device.createBuffer({
       label: args.label,
       size: args.size,
@@ -41,6 +43,9 @@ export class GPUArena<k, v> {
   }
   keys(): MapIterator<k> {
     return this.allocations.keys();
+  }
+  values(): MapIterator<GPUArenaSlot> {
+    return this.allocations.values();
   }
   entries(): MapIterator<[k, GPUArenaSlot]> {
     return this.allocations.entries();

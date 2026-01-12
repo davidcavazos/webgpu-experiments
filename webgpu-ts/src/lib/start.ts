@@ -85,7 +85,7 @@ export async function start<a>(args: {
     renderer.materials.resources.set(id, material);
   }
   for (const [id, entity] of initialState.scene ?? []) {
-    renderer.add([id], entity);
+    renderer.setEntity([id], entity);
   }
 
   function render(nowMilliseconds: number) {
