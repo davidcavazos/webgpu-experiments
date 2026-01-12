@@ -1,23 +1,10 @@
-import {
-  mat4,
-  vec3,
-  type Mat4,
-  type Mat4Arg,
-  type Quat,
-  type QuatArg,
-  type Vec2,
-  type Vec3,
-  type Vec3Arg,
-  type Vec4,
-} from "wgpu-matrix";
-import { VertexBuffer } from "./assets/vertexBuffer";
-import { loadObj } from "./loaders/mesh.obj";
+import { mat4, vec3, type Mat4, type Quat, type Vec3 } from "wgpu-matrix";
 import { Transform } from "./transform";
-import { defaultShaders } from "./shaders";
-import { hashRecord, toFixedLength } from "./stdlib";
-import { GPUArena, type GPUArenaSlot } from "./gpu-arena";
-import { GPUStore } from "./gpu-store";
-import { flattenCode } from "./compute/flatten";
+import { toFixedLength } from "./stdlib";
+import { GPUArena, type GPUArenaSlot } from "./gpu/arena";
+import { GPUStore } from "./gpu/store";
+import { GPUPassCompute as GPUComputePass } from "./gpu/pass-compute";
+import { GPUPassRender as GPURenderPass } from "./gpu/pass-render";
 
 export const MAX_U16_VALUE = 0xffff;
 export const MAX_U32_VALUE = 0xffffffff;
@@ -101,7 +88,7 @@ export interface Entity {
   light?: undefined; // TODO
   children?: [EntityId, Entity][];
 }
-export interface EntityData {
+export interface EntityLocal {
   transform: Transform;
   parentIndex: EntityIndex;
   meshIndex: MeshIndex;
@@ -132,17 +119,31 @@ export interface EntityBounds {
 // TODO: Bones, per-entity (mat4)
 
 export class Renderer {
+  static readonly SIZES_ENTITIES = {
+    offset: 0,
+    size: Uint32Array.BYTES_PER_ELEMENT,
+  };
+  static readonly SIZES_MESHES = {
+    offset: this.SIZES_ENTITIES.offset + this.SIZES_ENTITIES.size,
+    size: Uint32Array.BYTES_PER_ELEMENT,
+  };
+  static readonly SIZES_MATERIALS = {
+    offset: this.SIZES_MESHES.offset + this.SIZES_MESHES.size,
+    size: Uint32Array.BYTES_PER_ELEMENT,
+  };
+  static readonly SIZES_SIZE =
+    this.SIZES_ENTITIES.size +
+    this.SIZES_MESHES.size +
+    this.SIZES_MATERIALS.size;
+
   static readonly CAMERA_VIEW_PROJECTION_OFFSET = 0;
   static readonly CAMERA_VIEW_PROJECTION_SIZE = 4 * 4;
   static readonly CAMERA_SIZE =
     this.CAMERA_VIEW_PROJECTION_SIZE * Float32Array.BYTES_PER_ELEMENT;
 
-  static readonly ENTITY_TRANSFORM_OFFSET = 0;
-  static readonly ENTITY_TRANSFORM_SIZE = 4 * 4;
-  static readonly ENTITY_STRIdE = 128;
-
   device: GPUDevice;
   context: GPUCanvasContext;
+  sizes: GPUBuffer;
   camera: {
     projection: Mat4;
     transform: Transform;
@@ -152,7 +153,7 @@ export class Renderer {
   vertices: GPUArena<MeshId, number[][]>;
   indices: GPUArena<MeshLodId, number[]>;
   entities: {
-    local: GPUStore<EntityId, EntityData>;
+    local: GPUStore<EntityId, EntityLocal>;
     world: GPUBuffer;
     bounds: GPUBuffer;
   };
@@ -166,21 +167,12 @@ export class Renderer {
   };
   // lights
   // bounds
-  passes: {
-    flatten: {
-      bindGroupLayout: GPUBindGroupLayout;
-      bindGroup: GPUBindGroup;
-      shaderModule: GPUShaderModule;
-      pipeline: GPUComputePipeline;
-    };
-    draw: {
-      bindGroupLayout: GPUBindGroupLayout;
-      bindGroup: GPUBindGroup;
-      shaderModule: GPUShaderModule;
-      pipeline: GPURenderPipeline;
-    };
-  };
   depthTexture: GPUTexture;
+  passes: {
+    flatten: GPUComputePass;
+    opaque: GPURenderPass;
+  };
+
   constructor(args: {
     device: GPUDevice;
     context: GPUCanvasContext;
@@ -196,6 +188,11 @@ export class Renderer {
     this.device = args.device;
     this.context = args.context;
 
+    this.sizes = this.device.createBuffer({
+      label: "Sizes",
+      size: Renderer.SIZES_SIZE,
+      usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
+    });
     this.camera = {
       projection: mat4.identity(),
       transform: new Transform(),
@@ -303,116 +300,151 @@ export class Renderer {
     // lights
     // bounds
 
-    const presentationFormat = navigator.gpu.getPreferredCanvasFormat();
+    this.depthTexture = this.createDepthTexture(args.width, args.height);
 
-    const flattenLayout = this.device.createBindGroupLayout({
-      label: "Flatten layout",
-      entries: [
-        {
-          binding: 0, // Entities local
-          visibility: GPUShaderStage.COMPUTE,
-          buffer: { type: "read-only-storage" },
-        },
-        {
-          binding: 1, // Entities world
-          visibility: GPUShaderStage.COMPUTE,
-          buffer: { type: "storage" },
-        },
-        {
-          binding: 2, // Entities bounds
-          visibility: GPUShaderStage.COMPUTE,
-          buffer: { type: "storage" },
-        },
-      ],
-    });
-    const flattenBindGroup = this.device.createBindGroup({
-      label: "Flatten",
-      layout: flattenLayout,
-      entries: [
-        { binding: 0, resource: this.entities.local.buffer },
-        { binding: 1, resource: this.entities.world },
-        { binding: 2, resource: this.entities.bounds },
-      ],
-    });
-    const flattenShaders = this.device.createShaderModule({
-      code: flattenCode,
-    });
-    const flattenPipeline = this.device.createComputePipeline({
-      label: "Flatten",
-      layout: this.device.createPipelineLayout({
-        bindGroupLayouts: [flattenLayout],
-      }),
-      compute: { module: flattenShaders },
-    });
-
-    const drawLayout = this.device.createBindGroupLayout({
-      label: "Draw layout",
-      entries: [
-        {
-          binding: 0, // Camera
-          visibility: GPUShaderStage.VERTEX,
-          buffer: { type: "uniform" },
-        },
-        {
-          binding: 1, // Entities local
-          visibility: GPUShaderStage.VERTEX,
-          buffer: { type: "read-only-storage" },
-        },
-      ],
-    });
-    const drawBindGroup = this.device.createBindGroup({
-      label: "Draw",
-      layout: drawLayout,
-      entries: [
-        { binding: 0, resource: this.camera.buffer },
-        { binding: 1, resource: this.entities.local.buffer },
-      ],
-    });
-    const drawShaders = this.device.createShaderModule({
-      code: args.shaders ?? defaultShaders,
-    });
-    const drawPipeline = this.device.createRenderPipeline({
-      label: "Opaque",
-      layout: this.device.createPipelineLayout({
-        bindGroupLayouts: [drawLayout],
-      }),
-      vertex: {
-        module: drawShaders,
-        entryPoint: "opaque_vertex",
-        buffers: [VertexBuffer.layout],
-      },
-      fragment: {
-        module: drawShaders,
-        entryPoint: "opaque_pixel",
-        targets: [{ format: presentationFormat }],
-      },
-      primitive: {
-        topology: "triangle-list",
-        cullMode: "back",
-      },
-      depthStencil: {
-        depthWriteEnabled: true,
-        depthCompare: "less",
-        format: "depth24plus",
-      },
-    });
-
-    this.passes = {
-      flatten: {
-        bindGroup: flattenBindGroup,
-        bindGroupLayout: flattenLayout,
-        shaderModule: flattenShaders,
-        pipeline: flattenPipeline,
-      },
-      draw: {
-        bindGroup: drawBindGroup,
-        bindGroupLayout: drawLayout,
-        shaderModule: drawShaders,
-        pipeline: drawPipeline,
-      },
+    const types = {
+      Sizes: /* wgsl */ `
+      struct Sizes {
+        entities: u32,
+        meshes: u32,
+        materials: u32,
+      };`,
+      Camera: /* wgsl */ `
+      struct Camera {
+        view_projection: mat4x4f,
+      };`,
+      EntityLocal: /* wgsl */ `
+      struct EntityLocal {
+        position: vec3f,          // +12 = 12
+        rotation_packed: u32,     //  +4 = 16
+        scale: f32,               //  +4 = 20
+        parent_index: u32,        //  +4 = 24
+        mesh_material_index: u32, //  +4 = 28
+        _padding: u32,            //  +4 = 32
+      };`,
+      EntityWorld: /* wgsl */ `
+      struct EntityWorld {
+        position: vec3f, // +12 = 12
+        rotation: vec4f, // +16 = 28
+        scale: f32,      //  +4 = 32
+      };`,
+      EntityBounds: /* wgsl */ `
+      struct EntityBounds {
+        center: vec3f,  // +12 = 12
+        radius: f32,    //  +4 = 16
+        extents: vec3f, // +12 = 28
+        _padding: u32,  //  +4 = 32
+      };`,
     };
 
-    this.depthTexture = this.createDepthTexture(args.width, args.height);
+    const functions = {
+      unpack_quat: /* wgsl */ `
+      fn unpack_quat(packed: u32) -> vec4<f32> {
+        let max_idx = packed >> 30u;
+        let a = f32((packed >> 20u) & 1023u) / 1023.0 * 1.414214 - 0.707107;
+        let b = f32((packed >> 10u) & 1023u) / 1023.0 * 1.414214 - 0.707107;
+        let c = f32(packed & 1023u) / 1023.0 * 1.414214 - 0.707107;
+        let d = sqrt(1.0 - (a*a + b*b + c*c));
+
+        if (max_idx == 0u) { return vec4<f32>(d, a, b, c); }
+        if (max_idx == 1u) { return vec4<f32>(a, d, b, c); }
+        if (max_idx == 2u) { return vec4<f32>(a, b, d, c); }
+        return vec4<f32>(a, b, c, d);
+      }`,
+    };
+
+    this.passes = {
+      flatten: new GPUComputePass(this.device, {
+        label: "Flatten",
+        bindings: [
+          { type: "uniform", buffer: this.sizes },
+          { type: "read-only-storage", buffer: this.entities.local.buffer },
+          { type: "storage", buffer: this.entities.world },
+          { type: "storage", buffer: this.entities.bounds },
+        ],
+        code: /* wgsl */ `
+
+//---- START compute/flatten.wgsl ----\\
+${types.Sizes};
+${types.EntityLocal}
+${types.EntityWorld}
+${types.EntityBounds}
+
+@group(0) @binding(0) var<uniform> sizes: Sizes;
+@group(0) @binding(1) var<storage, read> local: array<EntityLocal>;
+@group(0) @binding(2) var<storage, read_write> world: array<EntityWorld>;
+@group(0) @binding(3) var<storage, read_write> bounds: array<EntityBounds>;
+
+${functions.unpack_quat}
+
+@compute @workgroup_size(64) fn flatten(
+  @builtin(global_invocation_id) id : vec3<u32>,
+) {
+  let entity_index = id.x;
+  if (entity_index >= sizes.entities) {
+    return;
+  }
+}
+//---- END compute/flatten.wgsl ----\\
+
+`,
+      }),
+
+      opaque: new GPURenderPass(this.device, {
+        label: "Opaque",
+        primitive: {
+          topology: "triangle-list",
+          cullMode: "back",
+        },
+        depthStencil: {
+          depthWriteEnabled: true,
+          depthCompare: "less",
+          format: "depth24plus",
+        },
+        bindings: [
+          { type: "uniform", buffer: this.camera.buffer },
+          { type: "read-only-storage", buffer: this.entities.local.buffer },
+        ],
+        code: /* wgsl */ `
+
+//---- START render/opaque.wgsl ----\\
+${types.Camera}
+${types.EntityLocal}
+
+@group(0) @binding(0) var<uniform> camera: Camera;
+@group(0) @binding(1) var<storage, read> entities: array<EntityLocal>;
+
+struct VertexInput {
+  @location(0) position: vec3f,
+  @location(1) normal: vec3f,
+  @location(2) uv: vec2f,
+};
+struct VertexOutput {
+  @builtin(position) position: vec4f,
+  @location(0) normal: vec3f,
+};
+
+@vertex fn vertex(
+  // @builtin(vertex_index) vertex_index : u32,
+  @builtin(instance_index) instance_id: u32,
+  input: VertexInput
+) -> VertexOutput {
+  // var instance = instances[model.instance_offset + instance_id];
+  var output: VertexOutput;
+  // output.position = camera.view_projection * instance.transform * vec4f(input.position, 1.0);
+  // output.normal = input.normal;
+  return output;
+}
+
+@fragment fn fragment(input: VertexOutput) -> @location(0) vec4f {
+  return vec4f(1, 1, 1, 1);
+  // return vec4f(input.normal * 0.5 + 0.5, 1);
+}
+//---- END render/opaque.wgsl ----\\
+
+`,
+      }),
+    };
   }
 
   createDepthTexture(width: number, height: number): GPUTexture {
@@ -448,6 +480,11 @@ export class Renderer {
       parentIndex: parentIndex ?? this.entities.local.NULL,
     };
     const index = this.entities.local.add(id, entityData);
+    this.device.queue.writeBuffer(
+      this.sizes,
+      Renderer.SIZES_ENTITIES.offset,
+      new Uint32Array([this.entities.local.size()]),
+    );
     for (const [childId, child] of entity.children ?? []) {
       this.add([...path, childId], child, index);
     }
@@ -507,12 +544,24 @@ export class Renderer {
         indices: { lod0, lod1, lod2, lod3 },
       };
       index = this.meshes.data.add(id, meshData);
+      this.device.queue.writeBuffer(
+        this.sizes,
+        Renderer.SIZES_MESHES.offset,
+        new Uint32Array([this.meshes.data.size()]),
+      );
     }
     return index;
   }
 
   draw() {
     const encoder = this.device.createCommandEncoder();
+    // Compute flatten
+    this.passes.flatten.dispatch(
+      encoder,
+      Math.ceil(this.entities.local.size() / 64),
+    );
+
+    // Render opaque
     const pass = encoder.beginRenderPass({
       colorAttachments: [
         {
@@ -529,37 +578,12 @@ export class Renderer {
         depthStoreOp: "store",
       },
     });
-
-    // 1) Build bounds
-    //    - Local to world
-    //    - Morton code
-    //    - Find LOD
-    //    - Request missing assets
-    // 2) Radix sort bounds by morton code
-    // 3) * Build BVH (not yet)
-    // 4) Find visible
-    //    - * Frustom culling (not yet)
-    //    - * Small culling (not yet)
-    //    - * Occlusion culling (not yet)
-    //    - Count instances, atomic add on mesh lod draw command
-    //    - Set a bit in a bit buffer to mark it as visible (workgroup aggregated)
-    // 5) Prefix sum
-    //    - Calculate firstInstance offsets for each mesh lod draw command
-    // 6) Instances
-    //    - Use the bit buffer to see visibility
-    //    - Atomic add the next available slot
-    //    - Write entity into instance batch
-    // 7) Draw indexed
-
-    pass.setPipeline(this.passes.draw.pipeline);
-    pass.setBindGroup(0, this.passes.draw.bindGroup);
+    pass.setPipeline(this.passes.opaque.pipeline);
+    pass.setBindGroup(0, this.passes.opaque.bindGroup);
     pass.setVertexBuffer(0, this.vertices.buffer);
     pass.setIndexBuffer(this.indices.buffer, "uint32");
-    // for (const e of this.entities.entries()) {
-    // }
-    // for (const model of Object.values(this.passes.opaque)) {
-    //   pass.drawIndexed(model.indices.count, model.instancesCount);
-    // }
+    // TODO: draw indexed
+
     pass.end();
     this.device.queue.submit([encoder.finish()]);
   }

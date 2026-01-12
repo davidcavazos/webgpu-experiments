@@ -1,15 +1,12 @@
 import {
   Renderer,
   type Entity,
-  type EntityData,
   type EntityId,
   type Material,
   type MaterialId,
   type Mesh,
   type MeshId,
 } from "./renderer";
-import { Reference } from "./resource";
-import { Transform } from "./transform";
 import type { Mat4 } from "wgpu-matrix";
 
 export interface InitState<a> {

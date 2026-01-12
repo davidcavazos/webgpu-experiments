@@ -1,9 +1,6 @@
 import { mat4, vec3, type Mat4, type Vec3 } from "wgpu-matrix";
 import * as io from "./lib/io";
-import { Scene } from "./lib/scene";
 import { start, type InitState as StateInit, type State } from "./lib/start";
-import { Camera, Mesh, Reference } from "./lib/resource";
-import { Transform } from "./lib/transform";
 import type { Renderer } from "./lib/renderer";
 
 const canvas: HTMLCanvasElement = document.querySelector("#canvas")!;
