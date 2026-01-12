@@ -51,7 +51,9 @@ export async function start<a>(args: {
     window.alert("this browser supports webgpu but it appears disabled");
     return;
   }
-  const device = await adapter.requestDevice();
+  const device = await adapter.requestDevice({
+    requiredFeatures: ["shader-f16"],
+  });
   device.lost.then((info) => {
     window.alert(`WebGPU device was lost: ${info.message}`);
     if (info.reason !== "destroyed") {

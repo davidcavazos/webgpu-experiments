@@ -5,6 +5,11 @@ import { GPUArena, type GPUArenaSlot } from "./gpu/arena";
 import { GPUStore } from "./gpu/store";
 import { GPUPassCompute as GPUComputePass } from "./gpu/pass-compute";
 import { GPUPassRender as GPURenderPass } from "./gpu/pass-render";
+import { shaderFlatten } from "./shader/flatten";
+import { shaderRender } from "./shader/render";
+
+// On transform (position, rotation, scale) compression
+// https://reingd.substack.com/p/animation-compression
 
 const DEBUG = {
   CAMERA_CHANGE: false,
@@ -246,8 +251,8 @@ export class Renderer {
         serialize: (entity, dst) => {
           let offset = 0;
           offset += writeVec3(dst, offset, entity.transform.getPosition()); //   +12 = 12
-          offset += writeQuatU32(dst, offset, entity.transform.getRotation()); // +4 = 16
-          offset += writeF32(dst, offset, entity.transform.getScaleUniform()); // +4 = 20
+          offset += writeF32(dst, offset, entity.transform.getScaleUniform()); // +4 = 16
+          offset += writeQuatU32(dst, offset, entity.transform.getRotation()); // +4 = 20
           offset += writeU32(dst, offset, entity.parentIndex); //                 +4 = 24
           offset += writeU16(dst, offset, entity.meshIndex); //                   +2 = 26
           offset += writeU16(dst, offset, entity.materialIndex); //               +2 = 28
@@ -367,8 +372,9 @@ export class Renderer {
     };
 
     const functions = {
-      unpack_quat: /* wgsl */ `
-      fn unpack_quat(packed: u32) -> vec4f {
+      // https://reingd.substack.com/p/animation-compression?utm_medium=reader2
+      quat_unpack: /* wgsl */ `
+      fn quat_unpack(packed: u32) -> vec4f {
         let max_idx = packed >> 30u;
         let a = f32((packed >> 20u) & 1023u) / 1023.0 * 1.414214 - 0.707107;
         let b = f32((packed >> 10u) & 1023u) / 1023.0 * 1.414214 - 0.707107;
@@ -381,69 +387,48 @@ export class Renderer {
         return vec4<f32>(a, b, c, d);
       }`,
       transform_matrix: /* wgsl */ `
-      fn transform_matrix(pos: vec3f, rotation: vec4f, scale: f32) -> mat4x4f {
-        let x = rotation.x; let y = rotation.y; let z = rotation.z; let w = rotation.w;
-        let x2 = x + x; let y2 = y + y; let z2 = z + z;
+alias quat = vec4f;
+fn transform_matrix(pos: vec3f, rotation: quat, scale: f32) -> mat4x4f {
+  // https://github.com/greggman/wgpu-matrix/blob/31963458dcafa4cf430d981afd9b31bc5eba55e3/src/mat4-impl.ts#L193
+  // https://github.com/greggman/wgpu-matrix/blob/31963458dcafa4cf430d981afd9b31bc5eba55e3/src/mat4-impl.ts#L1546
+  let rx = rotation.x; let ry = rotation.y; let rz = rotation.z; let rw = rotation.w;
+  let x2 = rx + rx; let y2 = ry + ry; let z2 = rz + rz;
 
-        let xx = x * x2;
-        let yx = y * x2;
-        let yy = y * y2;
-        let zx = z * x2;
-        let zy = z * y2;
-        let zz = z * z2;
-        let wx = w * x2;
-        let wy = w * y2;
-        let wz = w * z2;
+  let xx = rx * x2;
+  let yx = ry * x2;
+  let yy = ry * y2;
+  let zx = rz * x2;
+  let zy = rz * y2;
+  let zz = rz * z2;
+  let wx = rw * x2;
+  let wy = rw * y2;
+  let wz = rw * z2;
 
-        return mat4x4f(
-          vec4f(1 - yy - zz,      x + wz,     zx - wy, 0), // right 
-          vec4f(     x - wz, 1 - xx - zz,     zy + wx, 0), // up
-          vec4f(    zx + wy,     zy - wx, 1 - xx - yy, 0), // forward 
-          vec4f(      pos.x,       pos.y,       pos.z, 1),
-        );
-      }
+  return mat4x4f(
+    vec4f(1 - yy - zz,     rx + wz,     zx - wy, 0) * scale, // right 
+    vec4f(    rx - wz, 1 - xx - zz,     zy + wx, 0) * scale, // up
+    vec4f(    zx + wy,     zy - wx, 1 - xx - yy, 0) * scale, // forward 
+    vec4f(      pos.x,       pos.y,       pos.z, 1),
+  );
+}
+
       `,
     };
 
     this.passes = {
       flatten: new GPUComputePass(this.device, {
-        label: "Flatten",
+        label: "Compute flatten",
         bindings: [
           { type: "uniform", buffer: this.sizes },
           { type: "read-only-storage", buffer: this.entities.local.buffer },
           { type: "storage", buffer: this.entities.world },
           { type: "storage", buffer: this.entities.bounds },
         ],
-        code: /* wgsl */ `
-
-//---- START compute:flatten.wgsl ----\\
-${types.Sizes};
-${types.EntityLocal}
-${types.EntityWorld}
-${types.EntityBounds}
-
-@group(0) @binding(0) var<uniform> sizes: Sizes;
-@group(0) @binding(1) var<storage, read> local: array<EntityLocal>;
-@group(0) @binding(2) var<storage, read_write> world: array<EntityWorld>;
-@group(0) @binding(3) var<storage, read_write> bounds: array<EntityBounds>;
-
-${functions.unpack_quat}
-
-@compute @workgroup_size(64) fn flatten(
-  @builtin(global_invocation_id) id : vec3<u32>,
-) {
-  let entity_index = id.x;
-  if (entity_index >= sizes.entities) {
-    return;
-  }
-}
-
-//---- END compute:flatten.wgsl ----\\
-`,
+        code: shaderFlatten,
       }),
 
       opaque: new GPURenderPass(this.device, {
-        label: "Opaque",
+        label: "Render opaque",
         primitive: {
           topology: "triangle-list",
           cullMode: "back",
@@ -462,62 +447,15 @@ ${functions.unpack_quat}
           {
             type: "read-only-storage",
             visibility: GPUShaderStage.VERTEX,
-            buffer: this.draws.instances,
+            buffer: this.entities.world,
           },
           {
             type: "read-only-storage",
             visibility: GPUShaderStage.VERTEX,
-            buffer: this.entities.world,
+            buffer: this.draws.instances,
           },
         ],
-        code: /* wgsl */ `
-
-//---- START render:opaque.wgsl ----\\
-${types.Camera}
-${types.EntityWorld}
-
-alias EntityIndex = u32;
-
-@group(0) @binding(0) var<uniform> camera: Camera;
-@group(0) @binding(1) var<storage, read> instances: array<EntityIndex>;
-@group(0) @binding(2) var<storage, read> entities_world: array<EntityWorld>;
-
-${functions.transform_matrix}
-
-struct VertexInput {
-  @location(0) position: vec3f,
-  @location(1) normal: vec3f,
-  @location(2) uv: vec2f,
-};
-struct VertexOutput {
-  @builtin(position) position: vec4f,
-  @location(0) normal: vec3f,
-};
-
-@vertex fn vertex(
-  @builtin(vertex_index) vertex_index : u32,
-  @builtin(instance_index) instance_id: u32,
-  input: VertexInput
-) -> VertexOutput {
-  let entity_index = instances[instance_id];
-  let entity_world = entities_world[entity_index];
-  let position = entity_world.position_scale.xyz;
-  let scale = entity_world.position_scale.w;
-  let rotation = entity_world.rotation;
-  let world_matrix = transform_matrix(position, rotation, scale);
-  var output: VertexOutput;
-  output.position = camera.view_projection * world_matrix * vec4f(input.position, 1.0);
-  output.normal = input.normal;
-  return output;
-}
-
-@fragment fn fragment(input: VertexOutput) -> @location(0) vec4f {
-  // return vec4f(input.normal * 0.5 + 0.5, 1);
-  return vec4f(input.normal, 1);
-}
-
-//---- END render:opaque.wgsl ----\\
-`,
+        code: shaderRender,
       }),
     };
   }
@@ -532,7 +470,7 @@ struct VertexOutput {
 
     // TODO: REMOVE THIS
     {
-      // Compute flatten
+      // TODO: Compute flatten
       const pos = [0, 0, 0];
       const rot = [0, 0, 0, 1];
       const scale = 1;
@@ -542,7 +480,7 @@ struct VertexOutput {
         new Float32Array([...pos, scale, ...rot]),
       );
 
-      // Compute visible
+      // TODO: Compute visible
       const instanceCountOffset = 4; // set by 'visible' pass
       const instanceCount = new Uint32Array([1]);
       this.device.queue.writeBuffer(
@@ -551,7 +489,7 @@ struct VertexOutput {
         instanceCount,
       );
 
-      // Compute instances
+      // TODO: Compute instances
       const firstInstance = 0;
       const instances = new Uint32Array([0]);
       this.device.queue.writeBuffer(
