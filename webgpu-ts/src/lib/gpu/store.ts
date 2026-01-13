@@ -56,11 +56,7 @@ export class GPUStore<k, v> {
   }
 
   add(key: k, value: v): GPUStoreIndex {
-    const index = this.findFreeIndex();
-    if (index === undefined) {
-      return this.NULL;
-    }
-    this.allocations.set(key, index);
+    const index = this.allocate(key);
     const data = new ArrayBuffer(this.stride);
     this.serialize(value, data);
     const offset = index * this.stride;
@@ -69,10 +65,30 @@ export class GPUStore<k, v> {
   }
 
   remove(key: k): GPUStoreIndex | undefined {
-    throw new Error("TODO: GPUStore.remove");
+    const index = this.get(key);
+    if (index === undefined) {
+      return undefined;
+    }
+    this.allocations.delete(key);
+    this.freeList.push(index);
   }
 
-  findFreeIndex(): GPUStoreIndex | undefined {
+  async stream(key: k, promise: Promise<v>): Promise<GPUStoreIndex> {
+    this.allocate(key);
+    const value = await promise;
+    return this.add(key, value);
+  }
+
+  allocate(key: k): GPUStoreIndex {
+    let index = this.get(key);
+    if (index === undefined) {
+      index = this.findFreeIndex();
+      this.allocations.set(key, index);
+    }
+    return index;
+  }
+
+  findFreeIndex(): GPUStoreIndex {
     const index = this.freeList.pop();
     if (index !== undefined) {
       return index;
