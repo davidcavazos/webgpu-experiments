@@ -145,14 +145,9 @@ export async function start<a>(args: {
         (entry.contentBoxSize[0]?.blockSize || args.canvas.height) *
           devicePixelRatio;
       //   const canvas: HTMLCanvasElement = entry.target;
-      args.canvas.width = Math.max(
-        1,
-        Math.min(width, device.limits.maxTextureDimension2D),
-      );
-      args.canvas.height = Math.max(
-        1,
-        Math.min(height, device.limits.maxTextureDimension2D),
-      );
+      const maxTextureDimension2D = device.limits.maxTextureDimension2D;
+      args.canvas.width = Math.max(1, Math.min(width, maxTextureDimension2D));
+      args.canvas.height = Math.max(1, Math.min(height, maxTextureDimension2D));
       renderer.camera.projection = resize(
         renderer.camera.projection,
         args.canvas.width,

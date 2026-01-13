@@ -58,7 +58,7 @@ export interface DrawCmd {
   firstIndex: GPUSize32; //    [ 8] const from creation
   indexCount: GPUSize32; //    [ 0] const from creation
   instanceCount: GPUSize32; // [ 4] set by 'visible' pass
-  firstInstance: GPUSize32; // [16] set by 'instances' pass
+  firstInstance: GPUSize32; // [16] set by 'prefix sum' pass
 }
 function getMeshBounds(vertices: number[][]): MeshBounds {
   const [head, ...tail] = vertices;
@@ -181,6 +181,10 @@ export class Renderer {
   };
   // lights
   // bounds
+  sorted: {
+    // mortonCodes: GPUBuffer;
+    spatial: GPUBuffer;
+  };
   draws: {
     opaque: GPUArena<MeshLodId, DrawCmd>;
     // TODO: maybe each draw pass needs its own instances buffer?
@@ -291,6 +295,16 @@ export class Renderer {
         },
       }),
     };
+
+    this.sorted = {
+      spatial: this.device.createBuffer({
+        label: "Sorted spatial",
+        size: this.device.limits.maxStorageBufferBindingSize, // TODO: adjust to max entities
+        // TODO: COPY_DST -> COPY_SRC
+        usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
+      }),
+    };
+
     this.draws = {
       // https://developer.mozilla.org/en-US/docs/Web/API/GPURenderPassEncoder/drawIndexedIndirect
       opaque: new GPUArena(this.device, {
@@ -305,7 +319,7 @@ export class Renderer {
           offset += writeU32(dst, offset, draw.instanceCount); // +4 = 8  [ 4] set by 'visible' pass
           offset += writeU32(dst, offset, draw.firstIndex); //    +4 = 12 [ 8] const from creation
           offset += writeU32(dst, offset, draw.baseVertex); //    +4 = 16 [12] const from creation
-          offset += writeU32(dst, offset, draw.firstInstance); // +4 = 20 [16] set by 'instances' pass
+          offset += writeU32(dst, offset, draw.firstInstance); // +4 = 20 [16] set by 'prefix sum' pass
           // total 20 bytes, 0 bytes free
           return dst;
         },
@@ -336,85 +350,6 @@ export class Renderer {
     // bounds
 
     this.depthTexture = this.createDepthTexture(args.width, args.height);
-
-    const types = {
-      Sizes: /* wgsl */ `
-      struct Sizes {
-        entities: u32,
-        meshes: u32,
-        materials: u32,
-      };`,
-      Camera: /* wgsl */ `
-      struct Camera {
-        view_projection: mat4x4f,
-      };`,
-      EntityLocal: /* wgsl */ `
-      struct EntityLocal {
-        position: vec3f,          // +12 = 12
-        rotation_packed: u32,     //  +4 = 16
-        scale: f32,               //  +4 = 20
-        parent_index: u32,        //  +4 = 24
-        mesh_material_index: u32, //  +4 = 28
-        _padding: u32,            //  +4 = 32
-      };`,
-      EntityWorld: /* wgsl */ `
-      struct EntityWorld {
-        position_scale: vec4f, // +16 = 16
-        rotation: vec4f,       // +16 = 32
-      };`,
-      EntityBounds: /* wgsl */ `
-      struct EntityBounds {
-        center: vec3f,  // +12 = 12
-        radius: f32,    //  +4 = 16
-        extents: vec3f, // +12 = 28
-        _padding: u32,  //  +4 = 32
-      };`,
-    };
-
-    const functions = {
-      // https://reingd.substack.com/p/animation-compression?utm_medium=reader2
-      quat_unpack: /* wgsl */ `
-      fn quat_unpack(packed: u32) -> vec4f {
-        let max_idx = packed >> 30u;
-        let a = f32((packed >> 20u) & 1023u) / 1023.0 * 1.414214 - 0.707107;
-        let b = f32((packed >> 10u) & 1023u) / 1023.0 * 1.414214 - 0.707107;
-        let c = f32(packed & 1023u) / 1023.0 * 1.414214 - 0.707107;
-        let d = sqrt(1.0 - (a*a + b*b + c*c));
-
-        if (max_idx == 0u) { return vec4f(d, a, b, c); }
-        if (max_idx == 1u) { return vec4f(a, d, b, c); }
-        if (max_idx == 2u) { return vec4f(a, b, d, c); }
-        return vec4<f32>(a, b, c, d);
-      }`,
-      transform_matrix: /* wgsl */ `
-alias quat = vec4f;
-fn transform_matrix(pos: vec3f, rotation: quat, scale: f32) -> mat4x4f {
-  // https://github.com/greggman/wgpu-matrix/blob/31963458dcafa4cf430d981afd9b31bc5eba55e3/src/mat4-impl.ts#L193
-  // https://github.com/greggman/wgpu-matrix/blob/31963458dcafa4cf430d981afd9b31bc5eba55e3/src/mat4-impl.ts#L1546
-  let rx = rotation.x; let ry = rotation.y; let rz = rotation.z; let rw = rotation.w;
-  let x2 = rx + rx; let y2 = ry + ry; let z2 = rz + rz;
-
-  let xx = rx * x2;
-  let yx = ry * x2;
-  let yy = ry * y2;
-  let zx = rz * x2;
-  let zy = rz * y2;
-  let zz = rz * z2;
-  let wx = rw * x2;
-  let wy = rw * y2;
-  let wz = rw * z2;
-
-  return mat4x4f(
-    vec4f(1 - yy - zz,     rx + wz,     zx - wy, 0) * scale, // right 
-    vec4f(    rx - wz, 1 - xx - zz,     zy + wx, 0) * scale, // up
-    vec4f(    zx + wy,     zy - wx, 1 - xx - yy, 0) * scale, // forward 
-    vec4f(      pos.x,       pos.y,       pos.z, 1),
-  );
-}
-
-      `,
-    };
-
     this.passes = {
       flatten: new GPUComputePass(this.device, {
         label: "Compute flatten",
@@ -462,6 +397,22 @@ fn transform_matrix(pos: vec3f, rotation: quat, scale: f32) -> mat4x4f {
 
   draw() {
     const encoder = this.device.createCommandEncoder();
+
+    //    | Name        | Task
+    //  1 | Reset       | Zero out the Indirect Draw and Count buffers.
+    //  2 | Commands    | "Process CPU-driven changes (movement, state changes)."
+    //  3 | Physics     | "Resolve constraints, collisions, and wind for hair/fur."
+    //  _ | Skinning    | Calculates "Bone palette" for animated entites and writes a "kones" buffer
+    //  4 | Flatten     | Bake hierarchy into World Matrices; update AABBs.
+    //  5 | Sort        | Radix sort Morton codes for spatial coherence.
+    //  6 | BVH         | Construct/Refit the acceleration structure.
+    //  7 | Visible     | Frustum/Small/Occlusion culling + LOD selection.
+    //  8 | Scan        | Prefix sum on counts to find memory offsets.
+    //  9 | Instances   | Fill the final buffer with entity IDs for the draw calls.
+    // 10 | Depth       | The Opaque Z-Prepass (for Early-Z optimization).
+    // 11 | Opaque      | Main color pass for solid geometry.
+    // 12 | Transparent | Alpha-blending or OIT pass for Love or hair tips.
+
     // Compute flatten
     this.passes.flatten.dispatch(
       encoder,
@@ -470,42 +421,80 @@ fn transform_matrix(pos: vec3f, rotation: quat, scale: f32) -> mat4x4f {
 
     // TODO: REMOVE THIS
     {
-      // TODO: Compute flatten
+      // TODO: Compute reset
+      // TODO: Compute commands (64b size, u16 indexed)
+      // TODO: Compute flatten (prediction: world/bounds for physics to use)
+      // TODO: Compute physics (updates local, needs to re-flatten world/bounds)
+
+      // TODO: Compute flatten (correction: final world positions/bounds)
       for (const i of [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10]) {
         const pos = [-i * 0.2, 0, -i * 0.1];
         const rot = [0, 0, 0, 1];
         const scale = 1;
         this.device.queue.writeBuffer(
-          this.entities.world,
+          this.entities.world, // by entities.local
           i * 32, // offset
           new Float32Array([...pos, scale, ...rot]),
         );
       }
 
+      // TODO: Compute sort
+      // TODO: Compute spatial
+      // TODO: Compute BVH
+      // - parent index: u32
+      // - skip index: u32
+      // - child or entity index: u32
+      // - entities count: u16
+
+      // - bounding sphere: vec4<f32> (center+radius)
+      // - global illumination: 3 x vec4<f16> (3x RGBA f16)
+      // - ambient: vec3<f16> (rgb)
+      // - directional: mat3x3<f16> (rgb)
+      // --- alternative for Spherical Harmonics (SH) -- 16b aligned
+      // sh_red: vec4<f16>    L0 (ambient) + L1 (directional)
+      // sh_green: vec4<f16>  L0 (ambient) + L1 (directional)
+      // sh_blue: vec4<f16>   L0 (ambient) + L1 (directional)
+
       // TODO: Compute visible
+      // Workaround: assume all entities are visible
       const instanceCount = 3;
       const instanceCountOffset = 4; // set by 'visible' pass
       this.device.queue.writeBuffer(
-        this.draws.opaque.buffer,
+        this.draws.opaque.buffer, // by mesh-lod
         instanceCountOffset,
         new Uint32Array([instanceCount]),
       );
 
-      // TODO: Compute instances
+      // TODO: Compute scan (prefix sum)
+      //  read:  draws.instances.count
+      //  write: draws.instances.first (index, not offset bytes)
       const firstInstance = 2;
-      const firstInstanceOffset = 16; // set by 'instances' pass
+      const firstInstanceOffset = 16; // set by 'prefix sum' pass
       this.device.queue.writeBuffer(
-        this.draws.opaque.buffer,
+        this.draws.opaque.buffer, // by mesh-lod
         firstInstanceOffset,
         new Uint32Array([firstInstance]),
       );
+
+      // TODO: Compute instances (compaction)
+      //  read: sorted.spatial (entity_index)
+      //  read: sorted.flags (is_visible) -- camera + per shadow-casting light
+      //    NOTE: Per render target (main camera, shadow-casting light, reflection, etc)
+      //      low-tier:  4 sources (1 camera + 3 shadow/reflection sources)
+      //      mid-tier:  8 sources (1 camera + 7 shadow/reflection sources)
+      //      high-tier: 16 sources (1 camera + 15 shadow/reflection sources)
+      //      - sorted.spatial
+      //      - sorted lights
+      //      - draws
       this.device.queue.writeBuffer(
-        this.draws.instances,
+        this.draws.instances, // by mesh-lod firstInstance
         0,
         // Indices to entities.world
         new Uint32Array([0, 2, 5, 7, 1]),
       );
     }
+
+    // Render depth (Hi-Z for occlusion cullingg)
 
     // Render opaque
     const pass = encoder.beginRenderPass({
@@ -531,6 +520,8 @@ fn transform_matrix(pos: vec3f, rotation: quat, scale: f32) -> mat4x4f {
     for (const slot of this.draws.opaque.values()) {
       pass.drawIndexedIndirect(this.draws.opaque.buffer, slot.offset);
     }
+
+    // Render transparent
 
     pass.end();
     this.device.queue.submit([encoder.finish()]);
@@ -642,7 +633,7 @@ fn transform_matrix(pos: vec3f, rotation: quat, scale: f32) -> mat4x4f {
         firstIndex: Math.floor(slot.offset / Uint32Array.BYTES_PER_ELEMENT),
         indexCount: Math.floor(slot.size / Uint32Array.BYTES_PER_ELEMENT),
         instanceCount: 0, // set by 'visible' pass
-        firstInstance: 0, // start instance_id at 0
+        firstInstance: 0, // set by 'prefix sum' pass
       };
       draw.arena.add(id, cmd);
       if (DEBUG.DRAW_ADD) {

@@ -1,6 +1,6 @@
 export const shaderCommon = /* wgsl */ `
 
-enable f16;
+// enable f16;
 
 alias Quat = vec4f;
 
