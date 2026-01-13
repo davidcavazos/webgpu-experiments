@@ -52,7 +52,7 @@ export async function start<a>(args: {
     return;
   }
   const device = await adapter.requestDevice({
-    requiredFeatures: ["shader-f16"],
+    requiredFeatures: ["shader-f16", "indirect-first-instance"],
   });
   device.lost.then((info) => {
     window.alert(`WebGPU device was lost: ${info.message}`);

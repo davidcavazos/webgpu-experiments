@@ -1,7 +1,7 @@
 import { mat4, vec3, type Mat4, type Vec3 } from "wgpu-matrix";
 import * as io from "./lib/io";
 import { start, type InitState as StateInit, type State } from "./lib/start";
-import type { Renderer } from "./lib/renderer";
+import type { Entity, Renderer } from "./lib/renderer";
 import { Transform } from "./lib/transform";
 
 const canvas: HTMLCanvasElement = document.querySelector("#canvas")!;
@@ -47,9 +47,13 @@ async function init(renderer: Renderer): Promise<StateInit<App>> {
   }
 
   // Build/load the initial scene.
-  const entities = {
-    tri: {
+  const entities: Record<string, Entity> = {
+    tri1: {
       meshId: "triangle",
+    },
+    tri2: {
+      meshId: "triangle",
+      transform: new Transform({ position: [-1, 0, 0] }),
     },
     // camera: Entity({
     //   resource: Camera(),

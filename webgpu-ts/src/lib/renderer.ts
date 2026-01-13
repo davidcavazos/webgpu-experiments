@@ -316,7 +316,7 @@ export class Renderer {
         // TODO: COPY_DST -> COPY_SRC
         usage:
           GPUBufferUsage.STORAGE |
-          GPUBufferUsage.VERTEX |
+          // GPUBufferUsage.VERTEX |
           GPUBufferUsage.COPY_DST,
       }),
     };
@@ -471,31 +471,39 @@ fn transform_matrix(pos: vec3f, rotation: quat, scale: f32) -> mat4x4f {
     // TODO: REMOVE THIS
     {
       // TODO: Compute flatten
-      const pos = [0, 0, 0];
-      const rot = [0, 0, 0, 1];
-      const scale = 1;
-      this.device.queue.writeBuffer(
-        this.entities.world,
-        0, // offset
-        new Float32Array([...pos, scale, ...rot]),
-      );
+      for (const i of [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10]) {
+        const pos = [-i * 0.2, 0, -i * 0.1];
+        const rot = [0, 0, 0, 1];
+        const scale = 1;
+        this.device.queue.writeBuffer(
+          this.entities.world,
+          i * 32, // offset
+          new Float32Array([...pos, scale, ...rot]),
+        );
+      }
 
       // TODO: Compute visible
+      const instanceCount = 3;
       const instanceCountOffset = 4; // set by 'visible' pass
-      const instanceCount = new Uint32Array([1]);
       this.device.queue.writeBuffer(
         this.draws.opaque.buffer,
         instanceCountOffset,
-        instanceCount,
+        new Uint32Array([instanceCount]),
       );
 
       // TODO: Compute instances
-      const firstInstance = 0;
-      const instances = new Uint32Array([0]);
+      const firstInstance = 2;
+      const firstInstanceOffset = 16; // set by 'instances' pass
+      this.device.queue.writeBuffer(
+        this.draws.opaque.buffer,
+        firstInstanceOffset,
+        new Uint32Array([firstInstance]),
+      );
       this.device.queue.writeBuffer(
         this.draws.instances,
-        firstInstance * Uint32Array.BYTES_PER_ELEMENT,
-        instances,
+        0,
+        // Indices to entities.world
+        new Uint32Array([0, 2, 5, 7, 1]),
       );
     }
 
