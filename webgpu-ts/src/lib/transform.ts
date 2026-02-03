@@ -17,28 +17,19 @@ export class Transform {
   matrix: Mat4;
   constructor(args?: {
     position?: Vec3Arg;
-    orientation?: QuatArg;
-    scale?: Vec3Arg;
+    rotation?: QuatArg;
+    scale?: number;
   }) {
     this.matrix = mat4.identity();
     if (args?.position) {
       mat4.translate(this.matrix, args.position, this.matrix);
     }
-    if (args?.orientation) {
-      mat4.multiply(this.matrix, mat4.fromQuat(args.orientation), this.matrix);
+    if (args?.rotation) {
+      mat4.multiply(this.matrix, mat4.fromQuat(args.rotation), this.matrix);
     }
     if (args?.scale) {
-      mat4.scale(this.matrix, args.scale, this.matrix);
+      mat4.uniformScale(this.matrix, args.scale, this.matrix);
     }
-  }
-
-  serialize(dst?: Float32Array): Float32Array {
-    const size = 3 + 4 + 3; // pos vec3 + rot quat + scale vec3
-    dst ??= new Float32Array(size);
-    dst.set(this.getPosition(), 0);
-    dst.set(this.getRotation(), 3);
-    dst.set(this.getScale(), 7);
-    return dst;
   }
 
   identity(): Transform {
@@ -232,7 +223,7 @@ export class Transform {
   }
 }
 
-export function vec3Values(v: Vec3Arg): { x: number; y: number; z: number } {
+export function vec3Values(v: Vec3Arg): { x: number; y: number; z: number; } {
   return { x: v[0]!, y: v[1]!, z: v[2]! };
 }
 
@@ -245,7 +236,7 @@ export function quatValues(q: QuatArg): {
   return { x: q[0]!, y: q[1]!, z: q[2]!, w: q[3]! };
 }
 
-export function vec3YawPitch(v: Vec3Arg): { yaw: number; pitch: number } {
+export function vec3YawPitch(v: Vec3Arg): { yaw: number; pitch: number; } {
   const direction = vec3.normalize(v);
   return {
     yaw: Math.atan2(direction[0]!, direction[2]!),

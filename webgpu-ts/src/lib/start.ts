@@ -71,11 +71,10 @@ export async function start<a>(args: {
     alphaMode: "premultiplied",
   });
 
-  const renderer = new Renderer({
-    device,
-    context,
-    width: args.canvas.width,
-    height: args.canvas.height,
+  const renderer = new Renderer(device, {
+    // context,
+    // width: args.canvas.width,
+    // height: args.canvas.height,
   });
   const initialState = await args.init(renderer);
   let state: State<a> = {
@@ -85,21 +84,21 @@ export async function start<a>(args: {
     renderer,
     app: initialState.app,
   };
-  if (initialState.camera?.projection) {
-    renderer.camera.projection = initialState.camera.projection;
-  }
-  if (initialState.camera?.transform) {
-    renderer.camera.transform = initialState.camera.transform;
-  }
-  for (const [id, mesh] of initialState.meshes ?? []) {
-    renderer.meshes.resources.set(id, mesh);
-  }
-  for (const [id, material] of initialState.materials ?? []) {
-    renderer.materials.resources.set(id, material);
-  }
-  for (const [id, entity] of initialState.scene ?? []) {
-    renderer.setEntity([id], entity);
-  }
+  // if (initialState.camera?.projection) {
+  //   renderer.camera.projection = initialState.camera.projection;
+  // }
+  // if (initialState.camera?.transform) {
+  //   renderer.camera.transform = initialState.camera.transform;
+  // }
+  // for (const [id, mesh] of initialState.meshes ?? []) {
+  //   renderer.meshes.resources.set(id, mesh);
+  // }
+  // for (const [id, material] of initialState.materials ?? []) {
+  //   renderer.materials.resources.set(id, material);
+  // }
+  // for (const [id, entity] of initialState.scene ?? []) {
+  //   renderer.setEntity([id], entity);
+  // }
 
   function render(nowMilliseconds: number) {
     const now = nowMilliseconds * 0.001;
@@ -139,26 +138,26 @@ export async function start<a>(args: {
       const width =
         entry.devicePixelContentBoxSize?.[0]?.inlineSize ||
         (entry.contentBoxSize[0]?.inlineSize || args.canvas.width) *
-          devicePixelRatio;
+        devicePixelRatio;
       const height =
         entry.devicePixelContentBoxSize?.[0]?.blockSize ||
         (entry.contentBoxSize[0]?.blockSize || args.canvas.height) *
-          devicePixelRatio;
+        devicePixelRatio;
       //   const canvas: HTMLCanvasElement = entry.target;
       const maxTextureDimension2D = device.limits.maxTextureDimension2D;
       args.canvas.width = Math.max(1, Math.min(width, maxTextureDimension2D));
       args.canvas.height = Math.max(1, Math.min(height, maxTextureDimension2D));
-      renderer.camera.projection = resize(
-        renderer.camera.projection,
-        args.canvas.width,
-        args.canvas.height,
-      );
-      renderer.updateCameraViewProjection();
-      renderer.depthTexture.destroy();
-      renderer.depthTexture = renderer.createDepthTexture(
-        args.canvas.width,
-        args.canvas.height,
-      );
+      // renderer.camera.projection = resize(
+      //   renderer.camera.projection,
+      //   args.canvas.width,
+      //   args.canvas.height,
+      // );
+      // renderer.updateCameraViewProjection();
+      // renderer.depthTexture.destroy();
+      // renderer.depthTexture = renderer.createDepthTexture(
+      //   args.canvas.width,
+      //   args.canvas.height,
+      // );
       requestAnimationFrame(render);
     }
   });

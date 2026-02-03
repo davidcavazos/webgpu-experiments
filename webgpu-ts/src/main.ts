@@ -1,8 +1,9 @@
 import { mat4, vec3, type Mat4, type Vec3 } from "wgpu-matrix";
 import * as io from "./lib/io";
 import { start, type InitState as StateInit, type State } from "./lib/start";
-import type { Entity, Renderer } from "./lib/renderer";
+import type { Renderer } from "./lib/renderer";
 import { Transform } from "./lib/transform";
+import { load } from "./lib/load";
 
 const canvas: HTMLCanvasElement = document.querySelector("#canvas")!;
 
@@ -23,95 +24,97 @@ async function init(renderer: Renderer): Promise<StateInit<App>> {
   console.log(renderer.device.limits);
 
   // Check for shader compilation errors.
-  for (const [pass, { shaderModule }] of Object.entries(renderer.passes)) {
-    const messages = await renderer.shaderCompilationMessages(shaderModule);
-    if (messages.info.length > 0) {
-      console.log(`--- [${pass}] info messages ---`);
-      for (const msg of messages.info) {
-        console.log(msg);
-      }
-    }
-    if (messages.warnings.length > 0) {
-      console.log(`--- [${pass}] warnings ---`);
-      for (const msg of messages.info) {
-        console.log(`⚠️ ${msg}`);
-      }
-    }
-    if (messages.errors.length > 0) {
-      console.error(`--- [${pass}] errors ---`);
-      for (const msg of messages.errors) {
-        console.error(msg);
-      }
-      throw new Error(`[${pass}] compilation errors`);
-    }
-  }
+  // for (const [pass, { shaderModule }] of Object.entries(renderer.passes)) {
+  //   const messages = await renderer.shaderCompilationMessages(shaderModule);
+  //   if (messages.info.length > 0) {
+  //     console.log(`--- [${pass}] info messages ---`);
+  //     for (const msg of messages.info) {
+  //       console.log(msg);
+  //     }
+  //   }
+  //   if (messages.warnings.length > 0) {
+  //     console.log(`--- [${pass}] warnings ---`);
+  //     for (const msg of messages.info) {
+  //       console.log(`⚠️ ${msg}`);
+  //     }
+  //   }
+  //   if (messages.errors.length > 0) {
+  //     console.error(`--- [${pass}] errors ---`);
+  //     for (const msg of messages.errors) {
+  //       console.error(msg);
+  //     }
+  //     throw new Error(`[${pass}] compilation errors`);
+  //   }
+  // }
+
+  const scene = await load(renderer, "assets/experiment/apartment_small/scene.gltf");
 
   // Build/load the initial scene.
-  const entities: Record<string, Entity> = {
-    tri1: {
-      meshId: "triangle",
-    },
-    tri2: {
-      meshId: "triangle",
-      transform: new Transform({ position: [-1, 0, 0] }),
-    },
-    // camera: Entity({
-    //   resource: Camera(),
-    //   transform: new Transform({
-    //     position: [0, 0, 10],
-    //   }).cameraAim([0, 0, 0]),
-    // }),
-    // origin: Entity({
-    //   resource: Reference("assets/cube.obj"),
-    //   transform: new Transform({ scale: [0.1, 0.1, 0.1] }),
-    // }),
-    // triangle1: Entity({
-    //   resource: Mesh({
-    //     id: "triangle-mesh",
-    //     vertices: [
-    //       [0, 0, 0, 1, 0, 0],
-    //       [1, 0, 0, 0, 1, 0],
-    //       [0, 1, 0, 0, 0, 1],
-    //     ],
-    //     indices: [0, 1, 2],
-    //   }),
-    //   transform: new Transform({
-    //     position: [1, 1, 1],
-    //   }),
-    // }),
-    // triangle2: Entity({
-    //   resource: Mesh({ id: "triangle-mesh" }),
-    //   transform: new Transform({
-    //     position: [-1, -1, -10],
-    //   }),
-    // }),
-    // sphere: Entity({
-    //   resource: Reference("assets/icosphere.obj"),
-    //   transform: new Transform({
-    //     position: [-2, 1, -3],
-    //     scale: [0.5, 0.5, 0.5],
-    //   }),
-    // }),
-  };
+  // const entities: Record<string, Entity> = {
+  //   tri1: {
+  //     meshId: "triangle",
+  //   },
+  //   tri2: {
+  //     meshId: "triangle",
+  //     transform: new Transform({ position: [-1, 0, 0] }),
+  //   },
+  //   // camera: Entity({
+  //   //   resource: Camera(),
+  //   //   transform: new Transform({
+  //   //     position: [0, 0, 10],
+  //   //   }).cameraAim([0, 0, 0]),
+  //   // }),
+  //   // origin: Entity({
+  //   //   resource: Reference("assets/cube.obj"),
+  //   //   transform: new Transform({ scale: [0.1, 0.1, 0.1] }),
+  //   // }),
+  //   // triangle1: Entity({
+  //   //   resource: Mesh({
+  //   //     id: "triangle-mesh",
+  //   //     vertices: [
+  //   //       [0, 0, 0, 1, 0, 0],
+  //   //       [1, 0, 0, 0, 1, 0],
+  //   //       [0, 1, 0, 0, 0, 1],
+  //   //     ],
+  //   //     indices: [0, 1, 2],
+  //   //   }),
+  //   //   transform: new Transform({
+  //   //     position: [1, 1, 1],
+  //   //   }),
+  //   // }),
+  //   // triangle2: Entity({
+  //   //   resource: Mesh({ id: "triangle-mesh" }),
+  //   //   transform: new Transform({
+  //   //     position: [-1, -1, -10],
+  //   //   }),
+  //   // }),
+  //   // sphere: Entity({
+  //   //   resource: Reference("assets/icosphere.obj"),
+  //   //   transform: new Transform({
+  //   //     position: [-2, 1, -3],
+  //   //     scale: [0.5, 0.5, 0.5],
+  //   //   }),
+  //   // }),
+  // };
 
-  const meshes = {
-    triangle: {
-      vertices: [
-        [0, 0, 0, 1, 0, 0],
-        [1, 0, 0, 0, 1, 0],
-        [0, 1, 0, 0, 0, 1],
-      ],
-      lod0: [0, 1, 2],
-    },
-  };
+  // const meshes = {
+  //   triangle: {
+  //     vertices: [
+  //       [0, 0, 0, 1, 0, 0],
+  //       [1, 0, 0, 0, 1, 0],
+  //       [0, 1, 0, 0, 0, 1],
+  //     ],
+  //     lod0: [0, 1, 2],
+  //   },
+  // };
 
   // Return the initial state.
   return {
     camera: {
       transform: new Transform({ position: [0, 0, 5] }),
     },
-    scene: Object.entries(entities),
-    meshes: Object.entries(meshes),
+    // scene: Object.entries(entities),
+    // meshes: Object.entries(meshes),
     app: {
       cursor: vec3.create(),
       input: {
