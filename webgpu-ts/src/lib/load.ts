@@ -1,9 +1,7 @@
 import * as THREE from "three";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
-import type { Entity, Material, Renderer, Vertex } from "./renderer";
+import type { Entity, Mesh, Renderer, Vertex } from "./renderer";
 import { Transform } from "./transform";
-import { vec3 } from "wgpu-matrix";
-import type { Face } from "three/examples/jsm/Addons.js";
 
 export async function load(
   renderer: Renderer,
@@ -30,15 +28,44 @@ function loadNode(renderer: Renderer, node: THREE.Object3D): [string, Entity] {
   // * Can only do this if there's no overlap in mesh/material/light.
   const children = node.children.map((child) => loadNode(renderer, child));
   if (children.length > 0) {
-    entity.children = children;
+    entity.children = Object.fromEntries(children);
   }
   if (node.type === 'Mesh') {
-    const mesh = node as THREE.Mesh;
-    entity.meshId = mesh.geometry.uuid;
-    if (Array.isArray(mesh.material)) {
+    const threeMesh = node as THREE.Mesh;
+
+    // Add mesh.
+    const position = threeMesh.geometry.getAttribute('position');
+    const normal = threeMesh.geometry.getAttribute('normal');
+    const uv = threeMesh.geometry.getAttribute('uv');
+    const index = threeMesh.geometry.index;
+    const mesh: Mesh = {
+      geometry: () => ({
+        vertices: Array.from({ length: position.count }, (_, i): Vertex => ({
+          position: [position.getX(i), position.getY(i), position.getZ(i)],
+          normal: [normal.getX(i), normal.getY(i), normal.getZ(i)],
+          uv: [uv.getX(i), uv.getY(i)],
+        })),
+        indices: {
+          lod0: [...index?.array ?? []],
+        }
+      })
+    };
+    if (threeMesh.geometry.boundingBox !== null) {
+      const min = threeMesh.geometry.boundingBox.min;
+      const max = threeMesh.geometry.boundingBox.max;
+      mesh.bounds = {
+        min: [min.x, min.y, min.z],
+        max: [max.x, max.y, max.z],
+      };
+    }
+    renderer.meshes.add(threeMesh.geometry.uuid, mesh);
+
+    // Add entity.
+    entity.meshId = threeMesh.geometry.uuid;
+    if (Array.isArray(threeMesh.material)) {
       throw new Error('TODO: support material arrays in load');
     } else {
-      entity.materialId = mesh.material.name;
+      entity.materialId = threeMesh.material.name;
     }
     // console.log(node.name, node.type, entity, '\n', mesh.geometry, '\n', mesh.material);
   }

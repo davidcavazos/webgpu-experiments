@@ -60,6 +60,7 @@ export async function start<a>(args: {
       start(args);
     }
   });
+  console.log(device.limits);
 
   const context = args.canvas.getContext("webgpu");
   if (!context) {

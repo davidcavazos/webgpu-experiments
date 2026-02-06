@@ -21,7 +21,10 @@ interface App {
 }
 
 async function init(renderer: Renderer): Promise<StateInit<App>> {
-  console.log(renderer.device.limits);
+  const meshes_heap_mb = renderer.meshes.heap_size() / 1024 / 1024;
+  const meshes_pool_mb = renderer.meshes.pool_size() / 1024 / 1024;
+  console.log(`meshes.heap: ${meshes_heap_mb.toFixed(2)} MiB (vertex/index)`);
+  console.log(`meshes.pool: ${meshes_pool_mb.toFixed(2)} MiB (${renderer.meshes.capacity} capacity)`);
 
   // Check for shader compilation errors.
   // for (const [pass, { shaderModule }] of Object.entries(renderer.passes)) {
