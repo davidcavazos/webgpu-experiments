@@ -39,7 +39,7 @@ function loadNode(renderer: Renderer, node: THREE.Object3D): [string, Entity] {
     const uv = threeMesh.geometry.getAttribute('uv');
     const index = threeMesh.geometry.index;
     const mesh: Mesh = {
-      geometry: () => ({
+      loader: () => ({
         vertices: Array.from({ length: position.count }, (_, i): Vertex => ({
           position: [position.getX(i), position.getY(i), position.getZ(i)],
           normal: [normal.getX(i), normal.getY(i), normal.getZ(i)],
@@ -59,6 +59,9 @@ function loadNode(renderer: Renderer, node: THREE.Object3D): [string, Entity] {
       };
     }
     renderer.meshes.add(threeMesh.geometry.uuid, mesh);
+
+    // TODO: Remove this, it should be loaded via cpu_feedback.
+    renderer.meshes.loadGeometry(threeMesh.geometry.uuid);
 
     // Add entity.
     entity.meshId = threeMesh.geometry.uuid;

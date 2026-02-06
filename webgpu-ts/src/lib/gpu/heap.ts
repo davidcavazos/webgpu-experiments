@@ -13,6 +13,16 @@ export class GPUHeap {
     this._size = 0;
   }
 
+  size_capacity(): number {
+    return this.buffer.size;
+  }
+  size_used(): number {
+    return this._size;
+  }
+  size_available(): number {
+    return this.size_capacity() - this.size_used();
+  }
+
   clear() {
     this._size = 0;
   }
@@ -31,9 +41,7 @@ export class GPUHeap {
     throw new Error("TODO: GPUHeap.free not implemented yet");
   }
 
-  write(slot: GPUHeapSlot, serialize: (block: ArrayBuffer) => void) {
-    const block = this.buffer.getMappedRange(slot.offset, slot.size);
-    serialize(block);
-    this.device.queue.writeBuffer(this.buffer, slot.offset, block);
+  write(slot: GPUHeapSlot, data: GPUAllowSharedBufferSource) {
+    this.device.queue.writeBuffer(this.buffer, slot.offset, data);
   }
 }

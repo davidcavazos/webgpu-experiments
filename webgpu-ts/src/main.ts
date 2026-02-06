@@ -21,10 +21,11 @@ interface App {
 }
 
 async function init(renderer: Renderer): Promise<StateInit<App>> {
-  const meshes_heap_mb = renderer.meshes.heap_size() / 1024 / 1024;
-  const meshes_pool_mb = renderer.meshes.pool_size() / 1024 / 1024;
-  console.log(`meshes.heap: ${meshes_heap_mb.toFixed(2)} MiB (vertex/index)`);
-  console.log(`meshes.pool: ${meshes_pool_mb.toFixed(2)} MiB (${renderer.meshes.capacity} capacity)`);
+  const meshes_heap_cap_mb = renderer.meshes.heap_size() / 1024 / 1024;
+  const meshes_pool_cap_mb = renderer.meshes.pool_size() / 1024 / 1024;
+  console.log('--- Memory allocated ---');
+  console.log(`meshes.heap: ${meshes_heap_cap_mb.toFixed(2)} MiB (vertex/index)`);
+  console.log(`meshes.pool: ${meshes_pool_cap_mb.toFixed(2)} MiB (${renderer.meshes.capacity} capacity)`);
 
   // Check for shader compilation errors.
   // for (const [pass, { shaderModule }] of Object.entries(renderer.passes)) {
@@ -51,6 +52,11 @@ async function init(renderer: Renderer): Promise<StateInit<App>> {
   // }
 
   const scene = await load(renderer, "assets/experiment/apartment_small/scene.gltf");
+
+  const meshes_heap_use_mb = renderer.meshes.geometry.size_used() / 1024 / 1024;
+  console.log('--- Memory used ---');
+  console.log(`meshes.heap: ${(meshes_heap_use_mb / meshes_heap_cap_mb * 100).toFixed(1)}% (${meshes_heap_use_mb.toFixed(2)} MiB)`);
+  console.log(`meshes.pool: ${(renderer.meshes.entries.size / renderer.meshes.capacity * 100).toFixed(1)}% (${renderer.meshes.entries.size} count)`);
 
   // Build/load the initial scene.
   // const entities: Record<string, Entity> = {

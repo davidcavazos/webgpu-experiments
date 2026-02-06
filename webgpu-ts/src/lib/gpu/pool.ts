@@ -38,10 +38,8 @@ export class GPUPool {
     this.length = Math.max(0, this.length - 1);
   }
 
-  write(i: GPUIndex, serialize: (block: ArrayBuffer) => void) {
+  write(i: GPUIndex, data: GPUAllowSharedBufferSource) {
     const offset = i * this.blockSize;
-    const block = this.buffer.getMappedRange(offset, this.blockSize);
-    serialize(block);
-    this.device.queue.writeBuffer(this.buffer, offset, block);
+    this.device.queue.writeBuffer(this.buffer, offset, data);
   }
 }
