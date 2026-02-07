@@ -1,3 +1,18 @@
+export const UINT16_MAX = 0xFFFF;
+export const INT16_MAX = 0x7FFF;
+export const UINT32_MAX = 0xFFFFFFFF;
+export const INT32_MAX = 0x7FFFFFFF;
+
+export function kb(n: number): number {
+  return n * 1024;
+}
+export function mb(n: number): number {
+  return kb(n) * 1024;
+}
+export function gb(n: number): number {
+  return mb(n) * 1024;
+}
+
 export class Maybe<a> {
   value: a | undefined;
   constructor(value?: a | undefined) {
