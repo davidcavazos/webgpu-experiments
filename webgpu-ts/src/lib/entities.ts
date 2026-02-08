@@ -87,7 +87,7 @@ export class Entities {
     return id;
   }
 
-  setLocal(id: EntityId, entity: Entity, parentId?: EntityId) {
+  writeLocal(id: EntityId, entity: Entity, parentId?: EntityId) {
     const data = new ArrayBuffer(Entities.LOCAL_STRIDE);
     const transform = new Transform(entity.transform);
     new Uint32Array(data, 0, 1).set([parentId ?? UINT32_MAX]);
@@ -100,7 +100,7 @@ export class Entities {
     this.local.write(id, data);
   }
 
-  setMesh(id: EntityId, meshId: MeshId | undefined) {
+  writeMesh(id: EntityId, meshId: MeshId | undefined) {
     const data = new ArrayBuffer(Entities.MESH_STRIDE);
     new Uint16Array(data, 0, 1).set([meshId ?? UINT16_MAX]);
     this.device.queue.writeBuffer(this.mesh, id * data.byteLength, data);

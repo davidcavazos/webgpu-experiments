@@ -5,58 +5,59 @@ import { UINT32_MAX } from "./stdlib";
 
 export class Stage {
   device: GPUDevice;
-  meshes: Meshes;
   entities: Entities;
+  meshes: Meshes;
   constructor(device: GPUDevice, args?: {
-    geometryHeapSize?: number,
+    entitiesPoolCapacity?: number,
     meshesPoolCapacity?: number,
-    entitiesCapacity?: number,
+    geometryHeapSize?: number,
   }) {
     this.device = device;
+    this.entities = new Entities(this.device, {
+      capacity: args?.entitiesPoolCapacity,
+    });
     this.meshes = new Meshes(this.device, {
       capacity: args?.meshesPoolCapacity,
       heapSize: args?.geometryHeapSize,
     });
-    this.entities = new Entities(this.device, {
-      capacity: args?.entitiesCapacity,
-    });
   }
 
   clear() {
-    this.meshes.clear();
     this.entities.clear();
+    this.meshes.clear();
   }
 
   load(scene: Scene) {
     for (const [name, mesh] of Object.entries(scene.meshes)) {
-      this.addMesh(name, mesh);
+      this.loadMesh(name, mesh);
     }
     for (const [name, material] of Object.entries(scene.materials)) {
-      this.addMaterial(name, material);
+      this.loadMaterial(name, material);
     }
+    // Load entities after meshes and materials, they're needed.
     for (const [name, entity] of Object.entries(scene.entities)) {
-      this.addEntity(name, entity);
+      this.loadEntity(name, entity);
     }
   }
 
-  addEntity(name: EntityName, entity: Entity, parentId?: EntityId): EntityId {
+  loadEntity(name: EntityName, entity: Entity, parentId?: EntityId): EntityId {
     const id = this.entities.add(name);
-    this.entities.setLocal(id, entity, parentId);
-    this.entities.setMesh(id, this.meshes.get(name)?.id);
+    this.entities.writeLocal(id, entity, parentId);
+    this.entities.writeMesh(id, this.meshes.get(name)?.id);
     for (const [childName, child] of Object.entries(entity.children ?? {})) {
-      this.addEntity(childName, child, id);
+      this.loadEntity(childName, child, id);
     }
     return id;
   }
 
-  addMesh(name: MeshName, mesh: Mesh): MeshRef {
+  loadMesh(name: MeshName, mesh: Mesh): MeshRef {
     const ref = this.meshes.add(name, mesh);
-    this.meshes.setVertices(ref.id, UINT32_MAX);
-    this.meshes.setBounds(ref.id, ref.bounds);
+    this.meshes.writeVerticesRef(ref.id, UINT32_MAX);
+    this.meshes.writeBounds(ref.id, ref.bounds);
     return ref;
   }
 
-  addMaterial(name: MaterialName, material: Material) {
+  loadMaterial(name: MaterialName, material: Material) {
     // console.log(name, material);
   }
 }

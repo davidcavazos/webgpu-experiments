@@ -103,11 +103,11 @@ export class Meshes {
     return ref;
   }
 
-  setVertices(id: MeshId, offset: number) {
+  writeVerticesRef(id: MeshId, offset: number) {
     this.vertices.write(id, new Uint32Array([offset]));
   }
 
-  setIndices(
+  writeIndicesRef(
     id: MeshId,
     lod0: { offset: number, count: number; },
     lod1: { offset: number, count: number; },
@@ -124,7 +124,7 @@ export class Meshes {
     this.device.queue.writeBuffer(this.indices, id * data.byteLength, data);
   }
 
-  setBounds(id: MeshId, bounds: MeshBounds) {
+  writeBounds(id: MeshId, bounds: MeshBounds) {
     const data = new ArrayBuffer(Meshes.BOUNDS_STRIDE);
     // Quantize bounds to i16 using the scale.
     // minQ = floor(min / scale * INT16_MAX)
@@ -166,12 +166,12 @@ export class Meshes {
     };
     const size = sizes.vertices + sizes.lod0 + sizes.lod1 + sizes.lod2 + sizes.lod3;
     const slot = this.geometry.alloc(size);
-    this.setVertices(mesh.id, slot.offset);
     const lod0 = { offset: slot.offset + sizes.vertices, count: counts.lod0 };
     const lod1 = counts.lod1 == 0 ? lod0 : { offset: lod0.offset + sizes.lod0, count: counts.lod1 };
     const lod2 = counts.lod2 == 0 ? lod1 : { offset: lod1.offset + sizes.lod1, count: counts.lod2 };
     const lod3 = counts.lod3 == 0 ? lod2 : { offset: lod2.offset + sizes.lod2, count: counts.lod3 };
-    this.setIndices(mesh.id, lod0, lod1, lod2, lod3);
+    this.writeIndicesRef(mesh.id, lod0, lod1, lod2, lod3);
+    this.writeVerticesRef(mesh.id, slot.offset);
   }
 }
 
