@@ -1,5 +1,6 @@
 import { GPUPool } from "./gpu/pool";
 import type { MeshId } from "./meshes";
+import type { Entity } from "./scene";
 import { UINT16_MAX, UINT32_MAX } from "./stdlib";
 import { Transform } from "./transform";
 
@@ -7,12 +8,12 @@ export const FLAGS_OPAQUE = 1 << 0;
 
 export type EntityId = number;
 export type EntityName = string;
-export interface Entity {
-  parentId?: EntityId;
-  transform?: Transform;
-  children?: Record<EntityName, Entity>;
-  opaque?: boolean;
-}
+// export interface Entity {
+//   parentId?: EntityId;
+//   transform?: Transform;
+//   children?: Record<EntityName, Entity>;
+//   opaque?: boolean;
+// }
 export interface EntityMesh {
   meshId?: MeshId;
 }
@@ -71,6 +72,11 @@ export class Entities {
     });
   }
 
+  clear() {
+    this.entries.clear();
+    this.local.clear();
+  }
+
   add(name: EntityName): EntityId {
     let id = this.entries.get(name);
     if (id !== undefined) {
@@ -81,10 +87,10 @@ export class Entities {
     return id;
   }
 
-  setEntity(id: EntityId, entity: Entity) {
+  setLocal(id: EntityId, entity: Entity, parentId?: EntityId) {
     const data = new ArrayBuffer(Entities.LOCAL_STRIDE);
-    const transform = entity.transform ?? new Transform();
-    new Uint32Array(data, 0, 1).set([entity.parentId ?? UINT32_MAX]);
+    const transform = new Transform(entity.transform);
+    new Uint32Array(data, 0, 1).set([parentId ?? UINT32_MAX]);
     transform.getPosition(new Float32Array(data, 4, 3));
     transform.getRotationF16(new Float16Array(data, 16, 4));
     new Float16Array(data, 24, 1).set([transform.getScaleUniform()]);
@@ -94,9 +100,9 @@ export class Entities {
     this.local.write(id, data);
   }
 
-  setMesh(id: EntityId, mesh: EntityMesh) {
+  setMesh(id: EntityId, meshId: MeshId | undefined) {
     const data = new ArrayBuffer(Entities.MESH_STRIDE);
-    new Uint16Array(data, 0, 1).set([mesh.meshId ?? UINT16_MAX]);
+    new Uint16Array(data, 0, 1).set([meshId ?? UINT16_MAX]);
     this.device.queue.writeBuffer(this.mesh, id * data.byteLength, data);
   }
 

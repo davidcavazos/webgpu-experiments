@@ -74,10 +74,21 @@ export class Meshes {
     });
   };
 
+  clear() {
+    this.entries.clear();
+    this.loaders.clear();
+    this.geometry.clear();
+    this.vertices.clear();
+  }
+
+  get(name: MeshName): MeshRef | undefined {
+    return this.entries.get(name);
+  }
+
   add(name: MeshName, mesh: Mesh): MeshRef {
-    let entry = this.entries.get(name);
-    if (entry === undefined) {
-      entry = {
+    let ref = this.entries.get(name);
+    if (ref === undefined) {
+      ref = {
         id: this.vertices.alloc(),
         geometry: undefined,
         bounds: {
@@ -87,12 +98,9 @@ export class Meshes {
         },
       };
     }
-    this.entries.set(name, entry);
+    this.entries.set(name, ref);
     this.loaders.set(name, mesh.loader);
-    // No need to set indices since geometry is not yet loaded.
-    this.setVertices(entry.id, UINT32_MAX);
-    this.setBounds(entry.id, entry.bounds);
-    return entry;
+    return ref;
   }
 
   setVertices(id: MeshId, offset: number) {

@@ -1,6 +1,7 @@
-import { Entities } from "./entities";
-import { Meshes } from "./meshes";
-import type { Mesh, MeshName, Scene } from "./scene";
+import { Entities, type EntityId } from "./entities";
+import { Meshes, type MeshRef } from "./meshes";
+import type { Entity, EntityName, Material, MaterialName, Mesh, MeshName, Scene } from "./scene";
+import { UINT32_MAX } from "./stdlib";
 
 export class Stage {
   device: GPUDevice;
@@ -21,11 +22,41 @@ export class Stage {
     });
   }
 
-  loadScene(scene: Scene) {
-    Object.entries(scene.meshes).forEach(this.loadMesh);
+  clear() {
+    this.meshes.clear();
+    this.entities.clear();
   }
 
-  loadMesh([name, mesh]: [MeshName, Mesh]) {
-    console.log(name, mesh);
+  load(scene: Scene) {
+    for (const [name, mesh] of Object.entries(scene.meshes)) {
+      this.addMesh(name, mesh);
+    }
+    for (const [name, material] of Object.entries(scene.materials)) {
+      this.addMaterial(name, material);
+    }
+    for (const [name, entity] of Object.entries(scene.entities)) {
+      this.addEntity(name, entity);
+    }
+  }
+
+  addEntity(name: EntityName, entity: Entity, parentId?: EntityId): EntityId {
+    const id = this.entities.add(name);
+    this.entities.setLocal(id, entity, parentId);
+    this.entities.setMesh(id, this.meshes.get(name)?.id);
+    for (const [childName, child] of Object.entries(entity.children ?? {})) {
+      this.addEntity(childName, child, id);
+    }
+    return id;
+  }
+
+  addMesh(name: MeshName, mesh: Mesh): MeshRef {
+    const ref = this.meshes.add(name, mesh);
+    this.meshes.setVertices(ref.id, UINT32_MAX);
+    this.meshes.setBounds(ref.id, ref.bounds);
+    return ref;
+  }
+
+  addMaterial(name: MaterialName, material: Material) {
+    // console.log(name, material);
   }
 }

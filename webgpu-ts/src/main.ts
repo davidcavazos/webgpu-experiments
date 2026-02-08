@@ -69,7 +69,12 @@ async function init(device: GPUDevice): Promise<StateInit<App>> {
   // }
 
   const scene = await load("assets/experiment/apartment_small/scene.gltf");
-  console.log(scene);
+  stage.load(scene);
+
+  // TODO: do not load geometry here, stream as needed by cpu_feedback
+  for (const name of stage.meshes.entries.keys()) {
+    await stage.meshes.loadGeometry(name);
+  }
 
   const meshes_heap_use_mb = stage.meshes.geometry.size_used() / 1024 / 1024;
   console.log('--- Memory used ---');
@@ -79,6 +84,7 @@ async function init(device: GPUDevice): Promise<StateInit<App>> {
 
   // Return the initial state.
   return {
+    stage,
     app: {
       cursor: vec3.create(),
       input: {

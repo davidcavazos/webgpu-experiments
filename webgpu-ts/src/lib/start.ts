@@ -64,7 +64,7 @@ export async function start<a>(args: {
     frameNumber: 0,
     deltaTime: 0,
     now: performance.now(),
-    stage: stage,
+    stage: initialState.stage,
     app: initialState.app,
   };
 
