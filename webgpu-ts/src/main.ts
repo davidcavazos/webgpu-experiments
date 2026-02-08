@@ -22,6 +22,7 @@ interface App {
 }
 
 async function init(device: GPUDevice): Promise<StateInit<App>> {
+  console.log(device.limits);
   const stage = new Stage(device);
 
   const meshes_pool_cap_mb = (
@@ -160,7 +161,7 @@ function update(state: State<App>): State<App> {
   app.metrics.drawStartTime = updateEnd;
   app.metrics.updateElapsed = updateEnd - updateStart;
 
-  renderer.draw(stage);
+  renderer.draw(state);
 
   // Display performance metrics.
   if (state.frameNumber % 10 === 0) {

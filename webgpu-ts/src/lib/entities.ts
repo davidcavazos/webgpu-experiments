@@ -77,6 +77,14 @@ export class Entities {
     this.local.clear();
   }
 
+  count(): number {
+    return this.entries.size;
+  }
+
+  size(): number {
+    return this.local.size;
+  }
+
   add(name: EntityName): EntityId {
     let id = this.entries.get(name);
     if (id !== undefined) {

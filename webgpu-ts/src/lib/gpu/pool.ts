@@ -4,18 +4,18 @@ export class GPUPool {
   device: GPUDevice;
   buffer: GPUBuffer;
   blockSize: number; // bytes
-  length: number;
+  size: number;
   freeIndices: Set<GPUIndex>;
   constructor(device: GPUDevice, args: { blockSize: number, buffer: GPUBuffer; }) {
     this.device = device;
     this.buffer = args.buffer;
     this.blockSize = args.blockSize;
-    this.length = 0;
+    this.size = 0;
     this.freeIndices = new Set();
   }
 
   clear() {
-    this.length = 0;
+    this.size = 0;
     this.freeIndices.clear();
   }
 
@@ -25,17 +25,24 @@ export class GPUPool {
       this.freeIndices.delete(index);
       return index;
     }
-    index = this.length;
-    this.length += 1;
-    if (this.length * this.blockSize > this.buffer.size) {
+    index = this.size;
+    this.size += 1;
+    if (this.size * this.blockSize > this.buffer.size) {
       throw new Error('GPUPool: could not allocate, out of memory.');
     }
     return index;
   }
 
   free(i: GPUIndex) {
-    this.freeIndices.add(i);
-    this.length = Math.max(0, this.length - 1);
+    if (i === this.size - 1) {
+      this.size -= 1;
+      // TODO: improve fragmentation of free indices.
+      if (this.size === 0) {
+        this.freeIndices.clear();
+      }
+    } else {
+      this.freeIndices.add(i);
+    }
   }
 
   write(i: GPUIndex, data: GPUAllowSharedBufferSource) {

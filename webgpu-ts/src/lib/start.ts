@@ -43,21 +43,11 @@ export async function start<a>(args: {
       start(args);
     }
   });
-  console.log(device.limits);
-
-  const context = args.canvas.getContext("webgpu");
-  if (!context) {
-    throw Error("Could not get a WebGPU context.");
-  }
-  context.configure({
-    device,
-    format: navigator.gpu.getPreferredCanvasFormat(),
-    alphaMode: "premultiplied",
-  });
 
   const { stage, app } = await args.init(device);
   const renderer = new Renderer(device, {
     canvas: args.canvas,
+    stage,
   });
   let state: State<a> = {
     frameNumber: 0,
@@ -67,7 +57,6 @@ export async function start<a>(args: {
     renderer,
     app,
   };
-
 
   function render(nowMilliseconds: number) {
     const now = nowMilliseconds * 0.001; // to seconds
@@ -80,8 +69,6 @@ export async function start<a>(args: {
       now,
       frameNumber: state.frameNumber + 1,
     };
-
-    // TODO: stage update globals
     state = update(state);
     requestAnimationFrame(render);
   }

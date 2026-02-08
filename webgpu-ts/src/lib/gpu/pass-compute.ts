@@ -1,6 +1,6 @@
 import { GPUPass } from "./pass";
 
-export class GPUPassCompute extends GPUPass {
+export class GPUComputePass extends GPUPass {
   pipeline: GPUComputePipeline;
   constructor(
     device: GPUDevice,

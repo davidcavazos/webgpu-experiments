@@ -3,7 +3,7 @@ import { Transform } from "./transform";
 import { toFixedLength } from "./stdlib";
 import { GPUArena, type GPUArenaSlot } from "./gpu/arena";
 import { GPUStore } from "./gpu/store";
-import { GPUPassCompute as GPUComputePass } from "./gpu/pass-compute";
+import { GPUComputePass as GPUComputePass } from "./gpu/pass-compute";
 import { GPUPassRender as GPURenderPass } from "./gpu/pass-render";
 import { shaderFlatten } from "./shader/flatten";
 import { shaderRender } from "./shader/render";

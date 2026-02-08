@@ -5,6 +5,7 @@ import { UINT32_MAX } from "./stdlib";
 
 export class Stage {
   device: GPUDevice;
+  globals: GPUBuffer;
   entities: Entities;
   meshes: Meshes;
   constructor(device: GPUDevice, args?: {
@@ -13,6 +14,11 @@ export class Stage {
     geometryHeapSize?: number,
   }) {
     this.device = device;
+    this.globals = this.device.createBuffer({
+      label: 'globals',
+      size: 12,
+      usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
+    });
     this.entities = new Entities(this.device, {
       capacity: args?.entitiesPoolCapacity,
     });
@@ -59,5 +65,13 @@ export class Stage {
 
   loadMaterial(name: MaterialName, material: Material) {
     // console.log(name, material);
+  }
+
+  writeGlobals() {
+    const data = new ArrayBuffer(this.globals.size);
+    new Uint32Array(data, 0).set([
+      this.entities.size(), // entities_size
+    ]);
+    this.device.queue.writeBuffer(this.globals, 0, data);
   }
 }
