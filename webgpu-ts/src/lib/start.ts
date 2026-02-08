@@ -1,7 +1,7 @@
+import { Renderer } from "./renderer";
 import {
   Stage,
 } from "./stage";
-import type { Mat4 } from "wgpu-matrix";
 
 export interface InitState<a> {
   stage: Stage;
@@ -12,21 +12,17 @@ export interface State<a> {
   readonly frameNumber: number;
   readonly deltaTime: number;
   readonly now: number;
-  stage: Stage;
+  readonly stage: Stage;
+  readonly renderer: Renderer;
   app: a;
 }
 
 export async function start<a>(args: {
   canvas: HTMLCanvasElement;
   init: (device: GPUDevice) => Promise<InitState<a>>;
-  resize?: (projection: Mat4, width: number, height: number) => Mat4;
   update?: (state: State<a>) => State<a>;
-  updateAfterDraw?: (state: State<a>) => State<a>;
-  camera?: EntityId;
 }) {
-  const resize = args.resize ?? ((m, _w, _h) => m);
-  const update = args.update ?? ((s) => s);
-  const updateAfterDraw = args.updateAfterDraw ?? ((s) => s);
+  const update = args.update ?? (s => s);
 
   // Get the GPU device
   if (!navigator.gpu) {
@@ -59,14 +55,19 @@ export async function start<a>(args: {
     alphaMode: "premultiplied",
   });
 
-  const initialState = await args.init(device);
+  const { stage, app } = await args.init(device);
+  const renderer = new Renderer(device, {
+    canvas: args.canvas,
+  });
   let state: State<a> = {
     frameNumber: 0,
     deltaTime: 0,
     now: performance.now(),
-    stage: initialState.stage,
-    app: initialState.app,
+    stage,
+    renderer,
+    app,
   };
+
 
   function render(nowMilliseconds: number) {
     const now = nowMilliseconds * 0.001; // to seconds
@@ -80,8 +81,8 @@ export async function start<a>(args: {
       frameNumber: state.frameNumber + 1,
     };
 
+    // TODO: stage update globals
     state = update(state);
-    state = updateAfterDraw(state);
     requestAnimationFrame(render);
   }
   requestAnimationFrame(render);
@@ -104,16 +105,16 @@ export async function start<a>(args: {
     for (const entry of entries) {
       const width =
         entry.devicePixelContentBoxSize?.[0]?.inlineSize ||
-        (entry.contentBoxSize[0]?.inlineSize || args.canvas.width) *
+        (entry.contentBoxSize[0]?.inlineSize || renderer.canvas.width) *
         devicePixelRatio;
       const height =
         entry.devicePixelContentBoxSize?.[0]?.blockSize ||
-        (entry.contentBoxSize[0]?.blockSize || args.canvas.height) *
+        (entry.contentBoxSize[0]?.blockSize || renderer.canvas.height) *
         devicePixelRatio;
       //   const canvas: HTMLCanvasElement = entry.target;
       const maxTextureDimension2D = device.limits.maxTextureDimension2D;
-      args.canvas.width = Math.max(1, Math.min(width, maxTextureDimension2D));
-      args.canvas.height = Math.max(1, Math.min(height, maxTextureDimension2D));
+      renderer.canvas.width = Math.max(1, Math.min(width, maxTextureDimension2D));
+      renderer.canvas.height = Math.max(1, Math.min(height, maxTextureDimension2D));
       // renderer.camera.projection = resize(
       //   renderer.camera.projection,
       //   args.canvas.width,

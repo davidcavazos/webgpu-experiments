@@ -4,6 +4,7 @@ import { start, type InitState as StateInit, type State } from "./lib/start";
 import { Stage } from "./lib/stage";
 import { Transform } from "./lib/transform";
 import { load } from "./lib/load";
+import type { Renderer } from "./lib/renderer";
 
 const canvas: HTMLCanvasElement = document.querySelector("#canvas")!;
 
@@ -38,7 +39,11 @@ async function init(device: GPUDevice): Promise<StateInit<App>> {
     stage.entities.subscriptions.size
   ) / 1024 / 1024;
   const entities_heap_cap_mb = 0 / 1024 / 1024;
-  console.log('--- Memory allocated ---');
+  const allocated_total_mb = (
+    meshes_pool_cap_mb + meshes_heap_cap_mb +
+    entities_pool_cap_mb + entities_heap_cap_mb
+  );
+  console.log(`--- Memory allocated (${allocated_total_mb.toFixed(2)} MiB) ---`);
   console.log(` meshes.pool: ${meshes_pool_cap_mb.toFixed(2)} MiB (${stage.meshes.capacity} capacity)`);
   console.log(` meshes.heap: ${meshes_heap_cap_mb.toFixed(2)} MiB`);
   console.log(` entities.pool: ${entities_pool_cap_mb.toFixed(2)} MiB (${stage.entities.capacity} capacity)`);
@@ -77,10 +82,12 @@ async function init(device: GPUDevice): Promise<StateInit<App>> {
   }
 
   const meshes_heap_use_mb = stage.meshes.geometry.size_used() / 1024 / 1024;
+  const entities_heap_use_mb = 0 / 1024 / 1024;
   console.log('--- Memory used ---');
   console.log(` meshes.pool: ${(stage.meshes.entries.size / stage.meshes.capacity * 100).toFixed(1)}% (${stage.meshes.entries.size} count)`);
   console.log(` meshes.heap: ${(meshes_heap_use_mb / meshes_heap_cap_mb * 100).toFixed(1)}% (${meshes_heap_use_mb.toFixed(2)} MiB)`);
   console.log(` entities.pool: ${(stage.entities.entries.size / stage.entities.capacity * 100).toFixed(2)}% (${stage.entities.entries.size} count)`);
+  console.log(` entities.heap: ${(entities_heap_use_mb / entities_heap_cap_mb * 100).toFixed(1)}% (${entities_heap_use_mb.toFixed(2)} MiB)`);
 
   // Return the initial state.
   return {
@@ -100,23 +107,24 @@ async function init(device: GPUDevice): Promise<StateInit<App>> {
   };
 }
 
-function resize(projection: Mat4, width: number, height: number): Mat4 {
-  return mat4.perspective(
-    100, // fieldOfView
-    width / height, // aspect
-    1, // zNear
-    1000, // zFar
-    projection, // dst
-  );
-}
+// function resize(app: App, width: number, height: number): App {
+//   // return mat4.perspective(
+//   //   100, // fieldOfView
+//   //   width / height, // aspect
+//   //   1, // zNear
+//   //   1000, // zFar
+//   //   projection, // dst
+//   // );
+//   return { ...app, canvas: { width, height } };
+// }
 
 function update(state: State<App>): State<App> {
   const updateStart = performance.now();
 
-  const renderer = state.stage;
+  const { renderer, stage, app } = state;
   const camera = renderer.camera;
 
-  const input = state.app.input;
+  const input = app.input;
   const mouse = input.mouse.poll();
   const keyboard = input.keyboard.poll();
   if (mouse.scroll) {
@@ -125,13 +133,11 @@ function update(state: State<App>): State<App> {
       const speed = 0.5 * state.deltaTime;
       const delta = [-mouse.scroll.x * speed, mouse.scroll.y * speed, 0];
       camera.transform.translate(delta);
-      renderer.updateCameraViewProjection();
     } else if (keyboard.ctrl.held || keyboard.meta.held) {
       // Ctrl/Meta + scroll -> zoom camera
       const speed = 1.5 * state.deltaTime;
       const delta = [0, 0, (mouse.scroll.y - mouse.scroll.x) * speed];
       camera.transform.translate(delta);
-      renderer.updateCameraViewProjection();
     } else if (keyboard.alt.held) {
       // Alt + scroll -> rotate camera
       const speed = 0.2 * state.deltaTime;
@@ -139,29 +145,26 @@ function update(state: State<App>): State<App> {
         .yaw(-mouse.scroll.x * speed)
         .pitch(-mouse.scroll.y * speed)
         .alignUp();
-      renderer.updateCameraViewProjection();
     } else {
       // scroll -> orbit camera
       const speed = 0.5 * state.deltaTime;
-      const pivot = state.app.cursor;
+      const pivot = app.cursor;
       camera.transform
         .orbit(pivot, -mouse.scroll.x * speed, -mouse.scroll.y * speed)
         .alignUp();
-      renderer.updateCameraViewProjection();
     }
   }
 
   // Get metrics.
   const updateEnd = performance.now();
-  state.app.metrics.drawStartTime = updateEnd;
-  state.app.metrics.updateElapsed = updateEnd - updateStart;
-  return state;
-}
+  app.metrics.drawStartTime = updateEnd;
+  app.metrics.updateElapsed = updateEnd - updateStart;
 
-function updateAfterDraw(state: State<App>): State<App> {
+  renderer.draw(stage);
+
   // Display performance metrics.
   if (state.frameNumber % 10 === 0) {
-    const metrics = state.app.metrics;
+    const metrics = app.metrics;
     const fps = 1 / state.deltaTime;
     const updateElapsed = metrics.updateElapsed;
     const drawElapsed = performance.now() - metrics.drawStartTime;
@@ -176,4 +179,4 @@ function updateAfterDraw(state: State<App>): State<App> {
   return state;
 }
 
-start({ canvas, init, update, updateAfterDraw, resize });
+start({ canvas, init, update });
