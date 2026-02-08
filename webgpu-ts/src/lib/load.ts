@@ -3,7 +3,7 @@ import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 import type { Renderer } from "./renderer";
 import { Transform } from "./transform";
 import type { Entity, EntityId, EntityName } from "./entities";
-import type { Mesh, Vertex } from "./meshes";
+import type { Mesh, MeshName, Vertex } from "./meshes";
 
 export async function load(
   renderer: Renderer,
@@ -11,10 +11,10 @@ export async function load(
 ): Promise<[string, Entity]> {
   const loader = new GLTFLoader();
   const gltf = await loader.loadAsync(url);
-  return loadNode(renderer, gltf.scene);
+  return loadEntity(renderer, gltf.scene);
 }
 
-function loadNode(renderer: Renderer, node: THREE.Object3D, parentId?: EntityId): [string, Entity] {
+function loadEntity(renderer: Renderer, node: THREE.Object3D, parentId?: EntityId): [EntityName, Entity] {
   const name = node.name;
   const id = renderer.entities.add(name);
   const entity: Entity = {};
@@ -33,55 +33,56 @@ function loadNode(renderer: Renderer, node: THREE.Object3D, parentId?: EntityId)
   });
   // TODO(optimization): If there's only one child, flatten it directly.
   // * Can only do this if there's no overlap in mesh/material/light.
-  const children = node.children.map((child) => loadNode(renderer, child, id));
+  const children = node.children.map((child) => loadEntity(renderer, child, id));
   if (children.length > 0) {
     entity.children = Object.fromEntries(children);
   }
   renderer.entities.setEntity(id, entity);
 
   if (node.type === 'Mesh') {
-    const threeMesh = node as THREE.Mesh;
-
-    // Add mesh.
-    const position = threeMesh.geometry.getAttribute('position');
-    const normal = threeMesh.geometry.getAttribute('normal');
-    const uv = threeMesh.geometry.getAttribute('uv');
-    const index = threeMesh.geometry.index;
-    const mesh: Mesh = {
-      loader: () => ({
-        vertices: Array.from({ length: position.count }, (_, i): Vertex => ({
-          position: [position.getX(i), position.getY(i), position.getZ(i)],
-          normal: [normal.getX(i), normal.getY(i), normal.getZ(i)],
-          uv: [uv.getX(i), uv.getY(i)],
-        })),
-        indices: {
-          lod0: [...index?.array ?? []],
-        }
-      })
-    };
-    if (threeMesh.geometry.boundingBox !== null) {
-      const min = threeMesh.geometry.boundingBox.min;
-      const max = threeMesh.geometry.boundingBox.max;
-      mesh.bounds = {
-        min: [min.x, min.y, min.z],
-        max: [max.x, max.y, max.z],
-      };
-    }
-
-    const meshName = threeMesh.geometry.uuid;
-    renderer.meshes.add(meshName, mesh);
-
-    // TODO: Remove this, it should be loaded via cpu_feedback.
-    renderer.meshes.loadGeometry(meshName);
-
-    // if (Array.isArray(threeMesh.material)) {
-    //   throw new Error('TODO: support material arrays in load');
-    // } else {
-    //   throw new Error('TODO: support material in load');
-    // }
+    loadMesh(renderer, node as THREE.Mesh);
     entity.opaque = true;
   }
   return [name, entity];
+}
+
+export function loadMesh(renderer: Renderer, node: THREE.Mesh): [MeshName, Mesh] {
+  const name = node.geometry.uuid;
+  const position = node.geometry.getAttribute('position');
+  const normal = node.geometry.getAttribute('normal');
+  const uv = node.geometry.getAttribute('uv');
+  const index = node.geometry.index;
+  const mesh: Mesh = {
+    loader: () => ({
+      vertices: Array.from({ length: position.count }, (_, i): Vertex => ({
+        position: [position.getX(i), position.getY(i), position.getZ(i)],
+        normal: [normal.getX(i), normal.getY(i), normal.getZ(i)],
+        uv: [uv.getX(i), uv.getY(i)],
+      })),
+      indices: {
+        lod0: [...index?.array ?? []],
+      }
+    })
+  };
+  if (node.geometry.boundingBox !== null) {
+    const min = node.geometry.boundingBox.min;
+    const max = node.geometry.boundingBox.max;
+    mesh.bounds = {
+      min: [min.x, min.y, min.z],
+      max: [max.x, max.y, max.z],
+    };
+  }
+  renderer.meshes.add(name, mesh);
+
+  // TODO: Remove this, it should be loaded via cpu_feedback.
+  renderer.meshes.loadGeometry(name);
+
+  // if (Array.isArray(threeMesh.material)) {
+  //   throw new Error('TODO: support material arrays in load');
+  // } else {
+  //   throw new Error('TODO: support material in load');
+  // }
+  return [name, mesh];
 }
 
 // export interface Entity {

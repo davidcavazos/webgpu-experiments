@@ -1,5 +1,5 @@
 import { GPUPool } from "./gpu/pool";
-import type { MeshName } from "./meshes";
+import type { MeshId, MeshName } from "./meshes";
 import { UINT32_MAX } from "./stdlib";
 import { Transform } from "./transform";
 
@@ -12,6 +12,9 @@ export interface Entity {
   transform?: Transform;
   children?: Record<EntityName, Entity>;
   opaque?: boolean;
+}
+export interface EntityMesh {
+  meshId?: MeshId;
 }
 
 export class Entities {
@@ -85,15 +88,15 @@ export class Entities {
     transform.getPosition(new Float32Array(data, 4, 3));
     transform.getRotationF16(new Float16Array(data, 16, 4));
     new Float16Array(data, 24, 1).set([transform.getScaleUniform()]);
-    new Uint16Array(data, 26, 1).set([flags(entity)]);
+    new Uint16Array(data, 26, 1).set([0
+      | (entity.opaque ? FLAGS_OPAQUE : 0)
+    ]);
     this.local.write(id, data);
   }
-  setMesh(id: EntityId, meshName: MeshName) { }
+
+  setMesh(id: EntityId, mesh: EntityMesh) {
+  }
+
   // TODO: setMaterial
   // TODO: setSubscription
-}
-
-export function flags(entity: Entity): number {
-  return 0
-    | (entity.opaque ? FLAGS_OPAQUE : 0);
 }
