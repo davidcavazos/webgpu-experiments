@@ -46,12 +46,11 @@ export interface MeshRef {
 
 export class Meshes {
   static readonly MAX_CAPACITY = UINT16_MAX;
-  static readonly VERTICES_BLOCK_SIZE = 4;
-  static readonly INDICES_BLOCK_SIZE = 32;
-  static readonly BOUNDS_BLOCK_SIZE = 16;
-  static readonly VERTEX_BUFFER_STRIDE = 16;
-  static readonly INDEX_BUFFER_STRIDE = 4;
-  static readonly VERTEX_BUFFER_NONE = UINT32_MAX;
+  static readonly VERTICES_STRIDE = 4;
+  static readonly INDICES_STRIDE = 32;
+  static readonly BOUNDS_STRIDE = 16;
+  static readonly GEOMETRY_VERTEX_STRIDE = 16;
+  static readonly GEOMETRY_INDEX_STRIDE = 4;
   device: GPUDevice;
   capacity: number;
   entries: Map<MeshName, MeshRef>;
@@ -60,12 +59,12 @@ export class Meshes {
   vertices: GPUPool;
   indices: GPUBuffer;
   bounds: GPUBuffer;
-  constructor(device: GPUDevice, args: {
+  constructor(device: GPUDevice, args?: {
     capacity?: number;
     heapSize?: number;
   }) {
     this.device = device;
-    this.capacity = args.capacity ?? Meshes.MAX_CAPACITY;
+    this.capacity = args?.capacity ?? Meshes.MAX_CAPACITY;
     if (this.capacity > Meshes.MAX_CAPACITY) {
       throw new Error(`Meshes are u16-indexed, capacity cannot exceed ${Meshes.MAX_CAPACITY}, got ${this.capacity}`);
     }
@@ -79,35 +78,46 @@ export class Meshes {
       }),
     });
     this.vertices = new GPUPool(this.device, {
-      blockSize: Meshes.VERTICES_BLOCK_SIZE,
+      blockSize: Meshes.VERTICES_STRIDE,
       buffer: this.device.createBuffer({
         label: 'meshes_vertices',
-        size: this.capacity * Meshes.VERTICES_BLOCK_SIZE,
+        size: this.capacity * Meshes.VERTICES_STRIDE,
         usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
       }),
     });
     this.indices = this.device.createBuffer({
       label: 'meshes_indices',
-      size: this.capacity * Meshes.INDICES_BLOCK_SIZE,
+      size: this.capacity * Meshes.INDICES_STRIDE,
       usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
     });
     this.bounds = this.device.createBuffer({
       label: 'meshes_bounds',
-      size: this.capacity * Meshes.BOUNDS_BLOCK_SIZE,
+      size: this.capacity * Meshes.BOUNDS_STRIDE,
       usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
     });
   };
 
-  pool_size(): number {
-    return this.vertices.buffer.size + this.indices.size + this.bounds.size;
-  }
-  heap_size(): number {
-    return this.geometry.buffer.size;
+  add(name: MeshName, mesh: Mesh): MeshRef {
+    let entry = this.entries.get(name);
+    if (entry === undefined) {
+      entry = {
+        id: this.vertices.alloc(),
+        geometry: undefined,
+        bounds: getBounds(mesh),
+      };
+    }
+    this.entries.set(name, entry);
+    this.loaders.set(name, mesh.loader);
+    // No need to set indices since geometry is not yet loaded.
+    this.setVertices(entry.id, UINT32_MAX);
+    this.setBounds(entry.id, entry.bounds);
+    return entry;
   }
 
   setVertices(id: MeshId, offset: number) {
     this.vertices.write(id, new Uint32Array([offset]));
   }
+
   setIndices(
     id: MeshId,
     lod0: { offset: number, count: number; },
@@ -115,46 +125,27 @@ export class Meshes {
     lod2: { offset: number, count: number; },
     lod3: { offset: number, count: number; },
   ) {
-    const data = new ArrayBuffer(Meshes.INDICES_BLOCK_SIZE);
-    const offset = id * data.byteLength;
+    const data = new ArrayBuffer(Meshes.INDICES_STRIDE);
     new Uint32Array(data, 0, 8).set([
       lod0.offset, lod0.count,
       lod1.offset, lod1.count,
       lod2.offset, lod2.count,
       lod3.offset, lod3.count,
     ]);
-    this.device.queue.writeBuffer(this.indices, offset, data);
+    this.device.queue.writeBuffer(this.indices, id * data.byteLength, data);
   }
+
   setBounds(id: MeshId, bounds: MeshBounds) {
+    const data = new ArrayBuffer(Meshes.BOUNDS_STRIDE);
     // Quantize bounds to i16 using the scale.
     // minQ = floor(min / scale * INT16_MAX)
     // maxQ = ceil(max / scale * INT16_MAX)
-    const data = new ArrayBuffer(Meshes.BOUNDS_BLOCK_SIZE);
     const minQ = vec3.floor(vec3.mulScalar(vec3.divScalar(bounds.min, bounds.scale), INT16_MAX));
     const maxQ = vec3.ceil(vec3.mulScalar(vec3.divScalar(bounds.max, bounds.scale), INT16_MAX));
     new Int16Array(data, 0, 3).set(minQ);
     new Int16Array(data, 6, 3).set(maxQ);
     new Float32Array(data, 12, 1).set([bounds.scale]);
     this.device.queue.writeBuffer(this.bounds, id * data.byteLength, data);
-  }
-
-  add(name: MeshName, mesh: Mesh): MeshRef {
-    const ref = this.entries.get(name);
-    if (ref !== undefined) {
-      return ref;
-    }
-    const id = this.vertices.alloc();
-    const entry: MeshRef = {
-      id,
-      geometry: undefined,
-      bounds: getBounds(mesh),
-    };
-    this.entries.set(name, entry);
-    this.loaders.set(name, mesh.loader);
-    // No need to set indices since geometry is not yet loaded.
-    this.setVertices(id, Meshes.VERTEX_BUFFER_NONE);
-    this.setBounds(id, entry.bounds);
-    return entry;
   }
 
   loadGeometry(name: MeshName): GeometryRef | undefined {
@@ -178,11 +169,11 @@ export class Meshes {
       lod3: geometry.indices.lod3?.length ?? 0,
     };
     const sizes = {
-      vertices: counts.vertices * Meshes.VERTEX_BUFFER_STRIDE,
-      lod0: counts.lod0 * Meshes.INDEX_BUFFER_STRIDE,
-      lod1: counts.lod1 * Meshes.INDEX_BUFFER_STRIDE,
-      lod2: counts.lod2 * Meshes.INDEX_BUFFER_STRIDE,
-      lod3: counts.lod3 * Meshes.INDEX_BUFFER_STRIDE,
+      vertices: counts.vertices * Meshes.GEOMETRY_VERTEX_STRIDE,
+      lod0: counts.lod0 * Meshes.GEOMETRY_INDEX_STRIDE,
+      lod1: counts.lod1 * Meshes.GEOMETRY_INDEX_STRIDE,
+      lod2: counts.lod2 * Meshes.GEOMETRY_INDEX_STRIDE,
+      lod3: counts.lod3 * Meshes.GEOMETRY_INDEX_STRIDE,
     };
     const size = sizes.vertices + sizes.lod0 + sizes.lod1 + sizes.lod2 + sizes.lod3;
     const slot = this.geometry.alloc(size);

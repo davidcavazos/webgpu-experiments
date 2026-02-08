@@ -88,6 +88,10 @@ export class Transform {
     dst ??= quat.create();
     return quat.fromMat(this.matrix, dst);
   }
+  getRotationF16(dst?: Float16Array): Float16Array {
+    dst ??= new Float16Array(4);
+    return quat.fromMat(this.matrix, dst);
+  }
   getScale(dst?: Vec3): Vec3 {
     dst ??= vec3.create();
     dst.set([

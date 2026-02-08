@@ -1,7 +1,9 @@
 import * as THREE from "three";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
-import type { Entity, Mesh, Renderer, Vertex } from "./renderer";
+import type { Renderer } from "./renderer";
 import { Transform } from "./transform";
+import type { Entity, EntityId, EntityName } from "./entities";
+import type { Mesh, Vertex } from "./meshes";
 
 export async function load(
   renderer: Renderer,
@@ -12,8 +14,14 @@ export async function load(
   return loadNode(renderer, gltf.scene);
 }
 
-function loadNode(renderer: Renderer, node: THREE.Object3D): [string, Entity] {
-  const transform = new Transform({
+function loadNode(renderer: Renderer, node: THREE.Object3D, parentId?: EntityId): [string, Entity] {
+  const name = node.name;
+  const id = renderer.entities.add(name);
+  const entity: Entity = {};
+  if (parentId !== undefined) {
+    entity.parentId = parentId;
+  }
+  entity.transform = new Transform({
     position: [node.position.x, node.position.y, node.position.z],
     rotation: [
       node.quaternion.x,
@@ -23,13 +31,14 @@ function loadNode(renderer: Renderer, node: THREE.Object3D): [string, Entity] {
     ],
     scale: (node.scale.x + node.scale.y + node.scale.z) / 3.0,
   });
-  const entity: Entity = { transform };
   // TODO(optimization): If there's only one child, flatten it directly.
   // * Can only do this if there's no overlap in mesh/material/light.
-  const children = node.children.map((child) => loadNode(renderer, child));
+  const children = node.children.map((child) => loadNode(renderer, child, id));
   if (children.length > 0) {
     entity.children = Object.fromEntries(children);
   }
+  renderer.entities.setEntity(id, entity);
+
   if (node.type === 'Mesh') {
     const threeMesh = node as THREE.Mesh;
 
@@ -58,21 +67,21 @@ function loadNode(renderer: Renderer, node: THREE.Object3D): [string, Entity] {
         max: [max.x, max.y, max.z],
       };
     }
-    renderer.meshes.add(threeMesh.geometry.uuid, mesh);
+
+    const meshName = threeMesh.geometry.uuid;
+    renderer.meshes.add(meshName, mesh);
 
     // TODO: Remove this, it should be loaded via cpu_feedback.
-    renderer.meshes.loadGeometry(threeMesh.geometry.uuid);
+    renderer.meshes.loadGeometry(meshName);
 
-    // Add entity.
-    entity.meshId = threeMesh.geometry.uuid;
-    if (Array.isArray(threeMesh.material)) {
-      throw new Error('TODO: support material arrays in load');
-    } else {
-      entity.materialId = threeMesh.material.name;
-    }
-    // console.log(node.name, node.type, entity, '\n', mesh.geometry, '\n', mesh.material);
+    // if (Array.isArray(threeMesh.material)) {
+    //   throw new Error('TODO: support material arrays in load');
+    // } else {
+    //   throw new Error('TODO: support material in load');
+    // }
+    entity.opaque = true;
   }
-  return [node.name, entity];
+  return [name, entity];
 }
 
 // export interface Entity {

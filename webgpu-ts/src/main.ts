@@ -21,12 +21,26 @@ interface App {
 }
 
 async function init(renderer: Renderer): Promise<StateInit<App>> {
-  const meshes_pool_cap_mb = renderer.meshes.pool_size() / 1024 / 1024;
-  const meshes_heap_cap_mb = renderer.meshes.heap_size() / 1024 / 1024;
+  const meshes_pool_cap_mb = (
+    renderer.meshes.vertices.buffer.size +
+    renderer.meshes.indices.size +
+    renderer.meshes.bounds.size
+  ) / 1024 / 1024;
+  const meshes_heap_cap_mb = renderer.meshes.geometry.buffer.size / 1024 / 1024;
+  const entities_pool_cap_mb = (
+    renderer.entities.local.buffer.size +
+    renderer.entities.world_A.size +
+    renderer.entities.world_B.size +
+    renderer.entities.mesh.size +
+    renderer.entities.material.size +
+    renderer.entities.subscriptions.size
+  ) / 1024 / 1024;
+  const entities_heap_cap_mb = 0 / 1024 / 1024;
   console.log('--- Memory allocated ---');
-  console.log(`meshes: ${(meshes_heap_cap_mb + meshes_pool_cap_mb).toFixed(2)} MiB (${renderer.meshes.capacity} capacity)`);
-  console.log(`  pool: ${meshes_pool_cap_mb.toFixed(2)} MiB (vertices, indices, bounds)`);
-  console.log(`  heap: ${meshes_heap_cap_mb.toFixed(2)} MiB (vertex/index data)`);
+  console.log(` meshes.pool: ${meshes_pool_cap_mb.toFixed(2)} MiB (${renderer.meshes.capacity} capacity)`);
+  console.log(` meshes.heap: ${meshes_heap_cap_mb.toFixed(2)} MiB`);
+  console.log(` entities.pool: ${entities_pool_cap_mb.toFixed(2)} MiB (${renderer.entities.capacity} capacity)`);
+  console.log(` entities.heap: ${entities_heap_cap_mb.toFixed(2)} MiB`);
 
   // Check for shader compilation errors.
   // for (const [pass, { shaderModule }] of Object.entries(renderer.passes)) {
@@ -56,8 +70,9 @@ async function init(renderer: Renderer): Promise<StateInit<App>> {
 
   const meshes_heap_use_mb = renderer.meshes.geometry.size_used() / 1024 / 1024;
   console.log('--- Memory used ---');
-  console.log(`meshes.pool: ${(renderer.meshes.entries.size / renderer.meshes.capacity * 100).toFixed(1)}% (${renderer.meshes.entries.size} count)`);
-  console.log(`meshes.heap: ${(meshes_heap_use_mb / meshes_heap_cap_mb * 100).toFixed(1)}% (${meshes_heap_use_mb.toFixed(2)} MiB)`);
+  console.log(` meshes.pool: ${(renderer.meshes.entries.size / renderer.meshes.capacity * 100).toFixed(1)}% (${renderer.meshes.entries.size} count)`);
+  console.log(` meshes.heap: ${(meshes_heap_use_mb / meshes_heap_cap_mb * 100).toFixed(1)}% (${meshes_heap_use_mb.toFixed(2)} MiB)`);
+  console.log(` entities.pool: ${(renderer.entities.entries.size / renderer.entities.capacity * 100).toFixed(1)}% (${renderer.entities.entries.size} count)`);
 
   // Build/load the initial scene.
   // const entities: Record<string, Entity> = {
