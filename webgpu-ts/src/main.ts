@@ -1,7 +1,7 @@
 import { mat4, vec3, type Mat4, type Vec3 } from "wgpu-matrix";
 import * as io from "./lib/io";
 import { start, type InitState as StateInit, type State } from "./lib/start";
-import type { Renderer } from "./lib/renderer";
+import { Stage } from "./lib/stage";
 import { Transform } from "./lib/transform";
 import { load } from "./lib/load";
 
@@ -20,26 +20,28 @@ interface App {
   };
 }
 
-async function init(renderer: Renderer): Promise<StateInit<App>> {
+async function init(device: GPUDevice): Promise<StateInit<App>> {
+  const stage = new Stage(device);
+
   const meshes_pool_cap_mb = (
-    renderer.meshes.vertices.buffer.size +
-    renderer.meshes.indices.size +
-    renderer.meshes.bounds.size
+    stage.meshes.vertices.buffer.size +
+    stage.meshes.indices.size +
+    stage.meshes.bounds.size
   ) / 1024 / 1024;
-  const meshes_heap_cap_mb = renderer.meshes.geometry.buffer.size / 1024 / 1024;
+  const meshes_heap_cap_mb = stage.meshes.geometry.buffer.size / 1024 / 1024;
   const entities_pool_cap_mb = (
-    renderer.entities.local.buffer.size +
-    renderer.entities.world_A.size +
-    renderer.entities.world_B.size +
-    renderer.entities.mesh.size +
-    renderer.entities.material.size +
-    renderer.entities.subscriptions.size
+    stage.entities.local.buffer.size +
+    stage.entities.world_A.size +
+    stage.entities.world_B.size +
+    stage.entities.mesh.size +
+    stage.entities.material.size +
+    stage.entities.subscriptions.size
   ) / 1024 / 1024;
   const entities_heap_cap_mb = 0 / 1024 / 1024;
   console.log('--- Memory allocated ---');
-  console.log(` meshes.pool: ${meshes_pool_cap_mb.toFixed(2)} MiB (${renderer.meshes.capacity} capacity)`);
+  console.log(` meshes.pool: ${meshes_pool_cap_mb.toFixed(2)} MiB (${stage.meshes.capacity} capacity)`);
   console.log(` meshes.heap: ${meshes_heap_cap_mb.toFixed(2)} MiB`);
-  console.log(` entities.pool: ${entities_pool_cap_mb.toFixed(2)} MiB (${renderer.entities.capacity} capacity)`);
+  console.log(` entities.pool: ${entities_pool_cap_mb.toFixed(2)} MiB (${stage.entities.capacity} capacity)`);
   console.log(` entities.heap: ${entities_heap_cap_mb.toFixed(2)} MiB`);
 
   // Check for shader compilation errors.
@@ -66,80 +68,17 @@ async function init(renderer: Renderer): Promise<StateInit<App>> {
   //   }
   // }
 
-  const scene = await load(renderer, "assets/experiment/apartment_small/scene.gltf");
+  const scene = await load("assets/experiment/apartment_small/scene.gltf");
+  console.log(scene);
 
-  const meshes_heap_use_mb = renderer.meshes.geometry.size_used() / 1024 / 1024;
+  const meshes_heap_use_mb = stage.meshes.geometry.size_used() / 1024 / 1024;
   console.log('--- Memory used ---');
-  console.log(` meshes.pool: ${(renderer.meshes.entries.size / renderer.meshes.capacity * 100).toFixed(1)}% (${renderer.meshes.entries.size} count)`);
+  console.log(` meshes.pool: ${(stage.meshes.entries.size / stage.meshes.capacity * 100).toFixed(1)}% (${stage.meshes.entries.size} count)`);
   console.log(` meshes.heap: ${(meshes_heap_use_mb / meshes_heap_cap_mb * 100).toFixed(1)}% (${meshes_heap_use_mb.toFixed(2)} MiB)`);
-  console.log(` entities.pool: ${(renderer.entities.entries.size / renderer.entities.capacity * 100).toFixed(2)}% (${renderer.entities.entries.size} count)`);
-
-  // Build/load the initial scene.
-  // const entities: Record<string, Entity> = {
-  //   tri1: {
-  //     meshId: "triangle",
-  //   },
-  //   tri2: {
-  //     meshId: "triangle",
-  //     transform: new Transform({ position: [-1, 0, 0] }),
-  //   },
-  //   // camera: Entity({
-  //   //   resource: Camera(),
-  //   //   transform: new Transform({
-  //   //     position: [0, 0, 10],
-  //   //   }).cameraAim([0, 0, 0]),
-  //   // }),
-  //   // origin: Entity({
-  //   //   resource: Reference("assets/cube.obj"),
-  //   //   transform: new Transform({ scale: [0.1, 0.1, 0.1] }),
-  //   // }),
-  //   // triangle1: Entity({
-  //   //   resource: Mesh({
-  //   //     id: "triangle-mesh",
-  //   //     vertices: [
-  //   //       [0, 0, 0, 1, 0, 0],
-  //   //       [1, 0, 0, 0, 1, 0],
-  //   //       [0, 1, 0, 0, 0, 1],
-  //   //     ],
-  //   //     indices: [0, 1, 2],
-  //   //   }),
-  //   //   transform: new Transform({
-  //   //     position: [1, 1, 1],
-  //   //   }),
-  //   // }),
-  //   // triangle2: Entity({
-  //   //   resource: Mesh({ id: "triangle-mesh" }),
-  //   //   transform: new Transform({
-  //   //     position: [-1, -1, -10],
-  //   //   }),
-  //   // }),
-  //   // sphere: Entity({
-  //   //   resource: Reference("assets/icosphere.obj"),
-  //   //   transform: new Transform({
-  //   //     position: [-2, 1, -3],
-  //   //     scale: [0.5, 0.5, 0.5],
-  //   //   }),
-  //   // }),
-  // };
-
-  // const meshes = {
-  //   triangle: {
-  //     vertices: [
-  //       [0, 0, 0, 1, 0, 0],
-  //       [1, 0, 0, 0, 1, 0],
-  //       [0, 1, 0, 0, 0, 1],
-  //     ],
-  //     lod0: [0, 1, 2],
-  //   },
-  // };
+  console.log(` entities.pool: ${(stage.entities.entries.size / stage.entities.capacity * 100).toFixed(2)}% (${stage.entities.entries.size} count)`);
 
   // Return the initial state.
   return {
-    camera: {
-      transform: new Transform({ position: [0, 0, 5] }),
-    },
-    // scene: Object.entries(entities),
-    // meshes: Object.entries(meshes),
     app: {
       cursor: vec3.create(),
       input: {
@@ -168,7 +107,7 @@ function resize(projection: Mat4, width: number, height: number): Mat4 {
 function update(state: State<App>): State<App> {
   const updateStart = performance.now();
 
-  const renderer = state.renderer;
+  const renderer = state.stage;
   const camera = renderer.camera;
 
   const input = state.app.input;

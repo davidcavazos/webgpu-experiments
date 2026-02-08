@@ -1,23 +1,10 @@
 import {
-  Renderer,
-  type Entity,
-  type EntityId,
-  type Material,
-  type MaterialId,
-  type Mesh,
-  type MeshId,
-} from "./renderer";
+  Stage,
+} from "./stage";
 import type { Mat4 } from "wgpu-matrix";
-import type { Transform } from "./transform";
 
 export interface InitState<a> {
-  camera?: {
-    projection?: Mat4;
-    transform?: Transform;
-  };
-  scene?: [EntityId, Entity][];
-  meshes?: [MeshId, Mesh][];
-  materials?: [MaterialId, Material][];
+  stage: Stage;
   app: a;
 }
 
@@ -25,13 +12,13 @@ export interface State<a> {
   readonly frameNumber: number;
   readonly deltaTime: number;
   readonly now: number;
-  renderer: Renderer;
+  stage: Stage;
   app: a;
 }
 
 export async function start<a>(args: {
   canvas: HTMLCanvasElement;
-  init: (renderer: Renderer) => Promise<InitState<a>>;
+  init: (device: GPUDevice) => Promise<InitState<a>>;
   resize?: (projection: Mat4, width: number, height: number) => Mat4;
   update?: (state: State<a>) => State<a>;
   updateAfterDraw?: (state: State<a>) => State<a>;
@@ -72,37 +59,17 @@ export async function start<a>(args: {
     alphaMode: "premultiplied",
   });
 
-  const renderer = new Renderer(device, {
-    // context,
-    // width: args.canvas.width,
-    // height: args.canvas.height,
-  });
-  const initialState = await args.init(renderer);
+  const initialState = await args.init(device);
   let state: State<a> = {
     frameNumber: 0,
     deltaTime: 0,
     now: performance.now(),
-    renderer,
+    stage: stage,
     app: initialState.app,
   };
-  // if (initialState.camera?.projection) {
-  //   renderer.camera.projection = initialState.camera.projection;
-  // }
-  // if (initialState.camera?.transform) {
-  //   renderer.camera.transform = initialState.camera.transform;
-  // }
-  // for (const [id, mesh] of initialState.meshes ?? []) {
-  //   renderer.meshes.resources.set(id, mesh);
-  // }
-  // for (const [id, material] of initialState.materials ?? []) {
-  //   renderer.materials.resources.set(id, material);
-  // }
-  // for (const [id, entity] of initialState.scene ?? []) {
-  //   renderer.setEntity([id], entity);
-  // }
 
   function render(nowMilliseconds: number) {
-    const now = nowMilliseconds * 0.001;
+    const now = nowMilliseconds * 0.001; // to seconds
     if (now === state.now) {
       return;
     }
@@ -114,7 +81,6 @@ export async function start<a>(args: {
     };
 
     state = update(state);
-    renderer.draw();
     state = updateAfterDraw(state);
     requestAnimationFrame(render);
   }

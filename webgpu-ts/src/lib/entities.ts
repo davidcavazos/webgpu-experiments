@@ -1,5 +1,5 @@
 import { GPUPool } from "./gpu/pool";
-import type { MeshId, MeshName } from "./meshes";
+import type { MeshId } from "./meshes";
 import { UINT16_MAX, UINT32_MAX } from "./stdlib";
 import { Transform } from "./transform";
 

@@ -1,38 +1,15 @@
-import { vec3, type Vec2Arg, type Vec3, type Vec3Arg } from "wgpu-matrix";
+import { vec3, type Vec3, type Vec3Arg } from "wgpu-matrix";
 import { INT16_MAX, mb, UINT16_MAX, UINT32_MAX } from "./stdlib";
 import { GPUHeap, type GPUHeapSlot } from "./gpu/heap";
 import { GPUPool } from "./gpu/pool";
+import type { Geometry, Mesh, MeshName } from "./scene";
 
-export interface Vertex {
-  position: Vec3Arg;
-  normal: Vec3Arg;
-  uv: Vec2Arg;
-}
-export type Index = number;
-
-export interface Geometry {
-  vertices: Vertex[];
-  indices: {
-    lod0: Index[];
-    lod1?: Index[];
-    lod2?: Index[];
-    lod3?: Index[];
-  };
-}
 export interface GeometryRef {
   vertices: GPUHeapSlot;
   indices: [GPUHeapSlot, GPUHeapSlot, GPUHeapSlot, GPUHeapSlot];
 }
 
 export type MeshId = number;
-export type MeshName = string;
-export interface Mesh {
-  loader: () => Geometry,
-  bounds?: {
-    min?: Vec3Arg;
-    max?: Vec3Arg;
-  };
-}
 export interface MeshBounds {
   min: Vec3;
   max: Vec3;
@@ -54,7 +31,7 @@ export class Meshes {
   device: GPUDevice;
   capacity: number;
   entries: Map<MeshName, MeshRef>;
-  loaders: Map<MeshName, () => Geometry>;
+  loaders: Map<MeshName, () => Promise<Geometry>>;
   geometry: GPUHeap;
   vertices: GPUPool;
   indices: GPUBuffer;
@@ -103,7 +80,11 @@ export class Meshes {
       entry = {
         id: this.vertices.alloc(),
         geometry: undefined,
-        bounds: getBounds(mesh),
+        bounds: {
+          min: vec3.copy(mesh.bounds.min),
+          max: vec3.copy(mesh.bounds.max),
+          scale: getBoundsScale(mesh.bounds.min, mesh.bounds.max),
+        },
       };
     }
     this.entries.set(name, entry);
@@ -148,7 +129,7 @@ export class Meshes {
     this.device.queue.writeBuffer(this.bounds, id * data.byteLength, data);
   }
 
-  loadGeometry(name: MeshName): GeometryRef | undefined {
+  async loadGeometry(name: MeshName): Promise<GeometryRef | undefined> {
     const mesh = this.entries.get(name);
     if (mesh === undefined) {
       return undefined;
@@ -160,7 +141,7 @@ export class Meshes {
     if (loader === undefined) {
       return undefined;
     }
-    const geometry = loader();
+    const geometry = await loader();
     const counts = {
       vertices: geometry.vertices.length,
       lod0: geometry.indices.lod0.length,
@@ -186,22 +167,17 @@ export class Meshes {
   }
 }
 
-export function getBounds(mesh: Mesh): MeshBounds {
+export function getBounds(geometry: Geometry): MeshBounds {
   const min = vec3.create();
   const max = vec3.create();
-  if (mesh.bounds?.min && mesh.bounds?.max) {
-    vec3.copy(mesh.bounds.min, min);
-    vec3.copy(mesh.bounds.max, max);
-  } else {
-    for (const v of mesh.loader().vertices) {
-      vec3.min(min, v.position);
-      vec3.max(max, v.position);
-    }
+  for (const v of geometry.vertices) {
+    vec3.min(min, v.position);
+    vec3.max(max, v.position);
   }
   return { min, max, scale: getBoundsScale(min, max) };
 }
 
-export function getBoundsScale(min: Vec3, max: Vec3): number {
+export function getBoundsScale(min: Vec3Arg, max: Vec3Arg): number {
   return Math.max(
     Math.abs(max[0]!), Math.abs(min[0]!),
     Math.abs(max[1]!), Math.abs(min[1]!),

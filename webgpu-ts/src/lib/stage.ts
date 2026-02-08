@@ -1,7 +1,8 @@
 import { Entities } from "./entities";
 import { Meshes } from "./meshes";
+import type { Mesh, MeshName, Scene } from "./scene";
 
-export class Renderer {
+export class Stage {
   device: GPUDevice;
   meshes: Meshes;
   entities: Entities;
@@ -20,6 +21,11 @@ export class Renderer {
     });
   }
 
-  draw() {
+  loadScene(scene: Scene) {
+    Object.entries(scene.meshes).forEach(this.loadMesh);
+  }
+
+  loadMesh([name, mesh]: [MeshName, Mesh]) {
+    console.log(name, mesh);
   }
 }
