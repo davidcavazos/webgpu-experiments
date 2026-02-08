@@ -72,7 +72,7 @@ async function init(renderer: Renderer): Promise<StateInit<App>> {
   console.log('--- Memory used ---');
   console.log(` meshes.pool: ${(renderer.meshes.entries.size / renderer.meshes.capacity * 100).toFixed(1)}% (${renderer.meshes.entries.size} count)`);
   console.log(` meshes.heap: ${(meshes_heap_use_mb / meshes_heap_cap_mb * 100).toFixed(1)}% (${meshes_heap_use_mb.toFixed(2)} MiB)`);
-  console.log(` entities.pool: ${(renderer.entities.entries.size / renderer.entities.capacity * 100).toFixed(1)}% (${renderer.entities.entries.size} count)`);
+  console.log(` entities.pool: ${(renderer.entities.entries.size / renderer.entities.capacity * 100).toFixed(2)}% (${renderer.entities.entries.size} count)`);
 
   // Build/load the initial scene.
   // const entities: Record<string, Entity> = {

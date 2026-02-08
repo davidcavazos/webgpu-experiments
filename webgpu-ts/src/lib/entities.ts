@@ -1,6 +1,6 @@
 import { GPUPool } from "./gpu/pool";
 import type { MeshId, MeshName } from "./meshes";
-import { UINT32_MAX } from "./stdlib";
+import { UINT16_MAX, UINT32_MAX } from "./stdlib";
 import { Transform } from "./transform";
 
 export const FLAGS_OPAQUE = 1 << 0;
@@ -95,6 +95,9 @@ export class Entities {
   }
 
   setMesh(id: EntityId, mesh: EntityMesh) {
+    const data = new ArrayBuffer(Entities.MESH_STRIDE);
+    new Uint16Array(data, 0, 1).set([mesh.meshId ?? UINT16_MAX]);
+    this.device.queue.writeBuffer(this.mesh, id * data.byteLength, data);
   }
 
   // TODO: setMaterial

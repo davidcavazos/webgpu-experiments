@@ -16,7 +16,7 @@ export async function load(
 
 function loadEntity(renderer: Renderer, node: THREE.Object3D, parentId?: EntityId): [EntityName, Entity] {
   const name = node.name;
-  const id = renderer.entities.add(name);
+  const entityId = renderer.entities.add(name);
   const entity: Entity = {};
   if (parentId !== undefined) {
     entity.parentId = parentId;
@@ -33,20 +33,30 @@ function loadEntity(renderer: Renderer, node: THREE.Object3D, parentId?: EntityI
   });
   // TODO(optimization): If there's only one child, flatten it directly.
   // * Can only do this if there's no overlap in mesh/material/light.
-  const children = node.children.map((child) => loadEntity(renderer, child, id));
+  const children = node.children.map((child) => loadEntity(renderer, child, entityId));
   if (children.length > 0) {
     entity.children = Object.fromEntries(children);
   }
-  renderer.entities.setEntity(id, entity);
+  renderer.entities.setEntity(entityId, entity);
 
   if (node.type === 'Mesh') {
-    loadMesh(renderer, node as THREE.Mesh);
+    const [meshName, mesh] = getMesh(node as THREE.Mesh);
+    const { id: meshId } = renderer.meshes.add(meshName, mesh);
+    // TODO: Remove this, it should be loaded via cpu_feedback.
+    renderer.meshes.loadGeometry(meshName);
+    renderer.entities.setMesh(entityId, { meshId });
+
+    // if (Array.isArray(node.material)) {
+    //   throw new Error('TODO: support material arrays in load');
+    // } else {
+    //   throw new Error('TODO: support material in load');
+    // }
     entity.opaque = true;
   }
   return [name, entity];
 }
 
-export function loadMesh(renderer: Renderer, node: THREE.Mesh): [MeshName, Mesh] {
+export function getMesh(node: THREE.Mesh): [MeshName, Mesh] {
   const name = node.geometry.uuid;
   const position = node.geometry.getAttribute('position');
   const normal = node.geometry.getAttribute('normal');
@@ -72,22 +82,5 @@ export function loadMesh(renderer: Renderer, node: THREE.Mesh): [MeshName, Mesh]
       max: [max.x, max.y, max.z],
     };
   }
-  renderer.meshes.add(name, mesh);
-
-  // TODO: Remove this, it should be loaded via cpu_feedback.
-  renderer.meshes.loadGeometry(name);
-
-  // if (Array.isArray(threeMesh.material)) {
-  //   throw new Error('TODO: support material arrays in load');
-  // } else {
-  //   throw new Error('TODO: support material in load');
-  // }
   return [name, mesh];
 }
-
-// export interface Entity {
-//   transform?: Transform;
-//   meshId?: MeshId;
-//   materialId?: MaterialId;
-//   light?: undefined; // TODO
-//   children?: [EntityId, Entity][];
