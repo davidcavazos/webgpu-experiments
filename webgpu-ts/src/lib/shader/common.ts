@@ -1,54 +1,31 @@
 export const shaderCommon = /* wgsl */ `
 
-// enable f16;
+enable f16;
+
+// https://reingd.substack.com/p/animation-compression
 
 alias Quat = vec4f;
 
-struct Sizes {
-  entities: u32,
-  meshes: u32,
-  materials: u32,
+struct Globals {
+  entities_size: u32,
 };
 
-struct Camera {
-  view_projection: mat4x4f,
-};
-
-alias EntityIndex = u32;
+alias EntityId = u32;
 struct EntityLocal {
-  // https://reingd.substack.com/p/animation-compression
-  position_scale: vec4f,    // +16 = 16 (12+4)
-  rotation_pack32: u32,     //  +4 = 20
-  parent_index: u32,        //  +4 = 24
-  mesh_material_index: u32, //  +4 = 28
-  _padding: u32,            //  +4 = 32
+  position: vec3f,
+  scale: f32,
+  rotation: vec4<f16>,
+  parent_id: u32,
+  flags: u32,
 };
-fn entity_local_position(e: ptr<function, EntityLocal>) -> vec3f {
-  return (*e).position_scale.xyz;
-}
-fn entity_local_scale(e: ptr<function, EntityLocal>) -> f32 {
-  return (*e).position_scale.w;
-}
-fn entity_local_rotation(e: ptr<function, EntityLocal>) -> Quat {
-  return quat_unpack32((*e).rotation_pack32);
-}
-fn entity_local_mesh_index(e: ptr<function, EntityLocal>) -> u32 {
-  return (*e).mesh_material_index >> 16;
-}
-fn entity_local_material_index(e: ptr<function, EntityLocal>) -> u32 {
-  return (*e).mesh_material_index & 0xFF;
-}
 
 struct EntityWorld {
-  position_scale: vec4f, // +16 = 16 (12+4)
-  rotation: Quat,        // +16 = 32
+  position: vec3f,
+  scale: f32,
+  rotation: vec4<f16>,
+  morton_code: u32,
+  flags: u32,
 };
-fn entity_world_position(e: ptr<function, EntityWorld>) -> vec3f {
-  return (*e).position_scale.xyz;
-}
-fn entity_world_scale(e: ptr<function, EntityWorld>) -> f32 {
-  return (*e).position_scale.w;
-}
 
 struct EntityBounds {
   center_radius: vec4f, // +16 = 16 (3+1)
