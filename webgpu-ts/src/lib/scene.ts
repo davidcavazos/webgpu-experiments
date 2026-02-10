@@ -1,12 +1,17 @@
 import type { QuatArg, Vec2Arg, Vec3Arg, Vec4Arg } from "wgpu-matrix";
+import type { EntityId } from "./entities";
+import type { MeshId } from "./meshes";
+
+export type Transform = {
+  position?: Vec3Arg;
+  rotation?: QuatArg;
+  scale?: number;
+};
 
 export type EntityName = string;
 export interface Entity {
-  transform?: {
-    position?: Vec4Arg;
-    rotation?: QuatArg;
-    scale?: number;
-  };
+  parentId?: EntityId;
+  transform?: Transform;
   mesh?: MeshName;
   material?: MaterialName;
   children?: Record<EntityName, Entity>;

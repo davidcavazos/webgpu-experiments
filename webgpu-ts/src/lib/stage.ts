@@ -1,5 +1,5 @@
-import { Entities, type EntityId } from "./entities";
-import { Meshes, type MeshRef } from "./meshes";
+import { Entities, type EntityId, type EntityRef } from "./entities";
+import { Meshes, type MeshId, type MeshRef } from "./meshes";
 import type { Entity, EntityName, Material, MaterialName, Mesh, MeshName, Scene } from "./scene";
 import { UINT32_MAX } from "./stdlib";
 
@@ -8,6 +8,7 @@ export class Stage {
   globals: GPUBuffer;
   entities: Entities;
   meshes: Meshes;
+
   constructor(device: GPUDevice, args?: {
     entitiesPoolCapacity?: number,
     meshesPoolCapacity?: number,
@@ -46,14 +47,25 @@ export class Stage {
     }
   }
 
-  loadEntity(name: EntityName, entity: Entity, parentId?: EntityId): EntityId {
-    const id = this.entities.add(name);
-    this.entities.writeLocal(id, entity, parentId);
-    this.entities.writeMesh(id, this.meshes.get(name)?.id);
+  loadEntity(name: EntityName, entity: Entity): EntityRef {
+    const ref = this.entities.add(name);
+    this.updateEntityLocal(ref, entity);
+    this.updateEntityMesh(ref, this.meshes.get(entity.mesh ?? name)?.id);
     for (const [childName, child] of Object.entries(entity.children ?? {})) {
-      this.loadEntity(childName, child, id);
+      this.loadEntity(childName, { ...child, parentId: ref.id });
     }
-    return id;
+    return ref;
+  }
+
+  updateEntityLocal(ref: EntityRef, entity: Entity) {
+    ref.opaque = entity.opaque ?? false;
+    this.entities.writeLocal(ref.id, entity);
+  }
+  updateEntityMesh(ref: EntityRef, meshId: MeshId | undefined) {
+    if (meshId !== ref.meshId) {
+      ref.meshId = meshId;
+      this.entities.writeMesh(ref.id, meshId);
+    }
   }
 
   loadMesh(name: MeshName, mesh: Mesh): MeshRef {

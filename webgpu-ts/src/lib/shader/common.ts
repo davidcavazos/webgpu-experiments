@@ -18,6 +18,14 @@ struct EntityLocal {
   parent_id: u32,
   flags: u32,
 };
+const FLAGS_SLEEP  = 1 << 0;
+const FLAGS_OPAQUE = 1 << 1;
+fn is_sleep(flags: u32) -> bool {
+  return (flags & FLAGS_SLEEP) != 0;
+}
+fn is_opaque(flags: u32) -> bool {
+  return (flags & FLAGS_OPAQUE) != 0;
+}
 
 struct EntityWorld {
   position: vec3f,
@@ -26,12 +34,6 @@ struct EntityWorld {
   morton_code: u32,
   flags: u32,
 };
-
-struct EntityBounds {
-  center_radius: vec4f, // +16 = 16 (3+1)
-  extents: vec3f,       // +12 = 28
-  _padding: u32,        //  +4 = 32
-}
 
 fn transform_matrix(pos: vec3f, rotation: Quat, scale: f32) -> mat4x4f {
   // https://github.com/greggman/wgpu-matrix/blob/31963458dcafa4cf430d981afd9b31bc5eba55e3/src/mat4-impl.ts#L193
@@ -62,7 +64,6 @@ fn transform_matrix(pos: vec3f, rotation: Quat, scale: f32) -> mat4x4f {
     vec4f(      pos.x,       pos.y,       pos.z, 1),
   );
 }
-
 
 fn quat_unpack32(p: u32) -> Quat {
   // pack layout: 10-10-10-2
