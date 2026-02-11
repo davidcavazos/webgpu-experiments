@@ -1,7 +1,7 @@
-import { quat, vec3, type QuatArg, type Vec3Arg } from "wgpu-matrix";
+import { quat, vec3 } from "wgpu-matrix";
 import { GPUPool } from "./gpu/pool";
 import type { MeshId } from "./meshes";
-import type { Entity, Transform } from "./scene";
+import type { Entity, MeshName } from "./scene";
 import { UINT16_MAX, UINT32_MAX } from "./stdlib";
 
 export const FLAGS_SLEEP /* */ = 1 << 0;
@@ -11,7 +11,8 @@ export type EntityId = number;
 export type EntityName = string;
 export type EntityRef = {
   id: EntityId;
-  meshId?: MeshId;
+  name: EntityName;
+  mesh?: MeshName;
   opaque?: boolean;
 };
 
@@ -115,14 +116,21 @@ export class Entities {
     return this.local.size;
   }
 
+  get(name: EntityName): EntityRef | undefined {
+    return this.entries.get(name);
+  }
+  set(name: EntityName, ref: EntityRef) {
+    this.entries.set(name, ref);
+  }
+
   add(name: EntityName): EntityRef {
     let ref = this.entries.get(name);
     if (ref !== undefined) {
       return ref;
     }
     const id = this.local.alloc();
-    this.entries.set(name, { id });
-    return { id };
+    this.entries.set(name, { id, name });
+    return { id, name };
   }
 
   writeLocal(id: EntityId, entity: Entity) {

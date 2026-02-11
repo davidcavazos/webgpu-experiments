@@ -50,7 +50,7 @@ export class Stage {
   loadEntity(name: EntityName, entity: Entity): EntityRef {
     const ref = this.entities.add(name);
     this.updateEntityLocal(ref, entity);
-    this.updateEntityMesh(ref, this.meshes.get(entity.mesh ?? name)?.id);
+    this.updateEntityMesh(ref, entity.mesh);
     for (const [childName, child] of Object.entries(entity.children ?? {})) {
       this.loadEntity(childName, { ...child, parentId: ref.id });
     }
@@ -58,19 +58,20 @@ export class Stage {
   }
 
   updateEntityLocal(ref: EntityRef, entity: Entity) {
-    ref.opaque = entity.opaque ?? false;
+    this.entities.set(ref.name, { ...ref, opaque: entity.opaque });
     this.entities.writeLocal(ref.id, entity);
   }
-  updateEntityMesh(ref: EntityRef, meshId: MeshId | undefined) {
-    if (meshId !== ref.meshId) {
-      ref.meshId = meshId;
+  updateEntityMesh(ref: EntityRef, mesh: MeshName | undefined) {
+    if (mesh && mesh !== ref.mesh) {
+      this.entities.set(ref.name, { ...ref, mesh });
+      const meshId = this.meshes.get(mesh)?.id;
       this.entities.writeMesh(ref.id, meshId);
     }
   }
 
   loadMesh(name: MeshName, mesh: Mesh): MeshRef {
     const ref = this.meshes.add(name, mesh);
-    this.meshes.writeVerticesRef(ref.id, UINT32_MAX);
+    this.meshes.writeBaseVertex(ref.id, UINT32_MAX);
     this.meshes.writeBounds(ref.id, ref.bounds);
     return ref;
   }

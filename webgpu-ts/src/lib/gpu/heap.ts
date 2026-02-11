@@ -41,7 +41,7 @@ export class GPUHeap {
     throw new Error("TODO: GPUHeap.free not implemented yet");
   }
 
-  write(slot: GPUHeapSlot, data: GPUAllowSharedBufferSource) {
-    this.device.queue.writeBuffer(this.buffer, slot.offset, data);
+  write(offset: number, data: GPUAllowSharedBufferSource) {
+    this.device.queue.writeBuffer(this.buffer, offset, data);
   }
 }

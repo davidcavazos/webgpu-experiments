@@ -4,9 +4,15 @@ import { GPUHeap, type GPUHeapSlot } from "./gpu/heap";
 import { GPUPool } from "./gpu/pool";
 import type { Geometry, Mesh, MeshName } from "./scene";
 
+type GeometryRefLODs = [
+  { firstIndex: number, indexCount: number; },
+  { firstIndex: number, indexCount: number; },
+  { firstIndex: number, indexCount: number; },
+  { firstIndex: number, indexCount: number; },
+];
 export interface GeometryRef {
-  vertices: GPUHeapSlot;
-  indices: [GPUHeapSlot, GPUHeapSlot, GPUHeapSlot, GPUHeapSlot];
+  baseVertex: number;
+  lods: GeometryRefLODs;
 }
 
 export type MeshId = number;
@@ -24,31 +30,27 @@ export interface MeshRef {
 export class Meshes {
   static readonly MAX_CAPACITY = UINT16_MAX;
 
-  static readonly VERTICES_REF = {
-    size: 4,
-    view: (data: ArrayBuffer) => ({
-      offset: new Uint32Array(data, 0, 1),
-    }),
-  };
+  static readonly BASE_VERTEX = { size: 4 }; // u32
 
-  static readonly INDICES_REF = {
+  // https://webgpufundamentals.org/webgpu/lessons/resources/wgsl-offset-computer.html#x=5d000001004d01000000000000003d888b0237284d03d2258bce8be1af0081f03468f71776d4f392dc8bbd6c7df5a77636059cbd59ca89d90298a2affa7bbb460db73fa63d127887492c476bab67adb081c499e0c7046f903582183cf8e7ee1ff95b36d085887fc6d1033f3ec46a18aa67fc6eba83dc31bd7846a04ee2f6ac6351705ec665fa1ccb7ccdc26daa727b5a0ccba882301f795528dfee2236c88275939f0139633a9e2d3774070c4361b7e1d4f2a61dfff148bcbc
+  static readonly LODS = {
     size: 32,
     view: (data: ArrayBuffer) => ({
       lod0: {
-        offset: new Uint32Array(data, 0, 1),
-        count: new Uint32Array(data, 4, 1),
+        firstIndex: new Uint32Array(data, 0, 1),
+        indexCount: new Uint32Array(data, 4, 1),
       },
       lod1: {
-        offset: new Uint32Array(data, 8, 1),
-        count: new Uint32Array(data, 12, 1),
+        firstIndex: new Uint32Array(data, 8, 1),
+        indexCount: new Uint32Array(data, 12, 1),
       },
       lod2: {
-        offset: new Uint32Array(data, 16, 1),
-        count: new Uint32Array(data, 20, 1),
+        firstIndex: new Uint32Array(data, 16, 1),
+        indexCount: new Uint32Array(data, 20, 1),
       },
       lod3: {
-        offset: new Uint32Array(data, 24, 1),
-        count: new Uint32Array(data, 28, 1),
+        firstIndex: new Uint32Array(data, 24, 1),
+        indexCount: new Uint32Array(data, 28, 1),
       },
     }),
   };
@@ -66,30 +68,33 @@ export class Meshes {
   // https://webgpufundamentals.org/webgpu/lessons/resources/wgsl-offset-computer.html#x=5d000001000a01000000000000003d888b0237284d03d2258bce8be1af0081f03468f71776d4f392dc8bbd6cd12bb77ae4df8a541430a62ceaa7a28e236f1ecf27ebbf8baf2dd0c87683f1d45382f492f7500ab40c37e99189de5f8fe963927340abfab3fea597fad52ec74c368723453ef9d30836947c5209e7ce1a9aaadc03120146d64a47c2f2f2ea6b578b302df1b6361dfd53388c2551c8b4e826d59d166017ae06c9e339f2ae3f598c9e81da7cba7edac13d280f5fff0f011a00
   static readonly GEOMETRY_VERTEX = {
     size: 32,
-    view: (data: ArrayBuffer) => ({
-      position: new Float32Array(data, 0, 3),
-      normal: new Float16Array(data, 16, 3),
-      uv: new Float16Array(data, 24, 2),
-    }),
+    view: (data: ArrayBuffer, i: number) => {
+      const offset = i * Meshes.GEOMETRY_VERTEX.size;
+      return {
+        position: new Float32Array(data, 0 + offset, 3),
+        normal: new Float16Array(data, 16 + offset, 3),
+        uv: new Float16Array(data, 24 + offset, 2),
+      };
+    },
     attributes: [
       { shaderLocation: 0, offset: 0, format: 'float32x3' }, //  position
       { shaderLocation: 1, offset: 16, format: 'float16x4' }, // normal
       { shaderLocation: 2, offset: 24, format: 'float16x2' }, // uv
-    ],
+    ] as GPUVertexAttribute[],
   };
+
   static readonly GEOMETRY_INDEX = {
-    size: 4,
-    view: (data: ArrayBuffer) => ({
-      index: new Uint32Array(data, 0, 1),
-    }),
+    size: 4, // u32
+    format: 'uint32' as GPUIndexFormat,
   };
+
   device: GPUDevice;
   capacity: number;
   entries: Map<MeshName, MeshRef>;
   loaders: Map<MeshName, () => Promise<Geometry>>;
   geometry: GPUHeap;
-  vertices: GPUPool;
-  indices: GPUBuffer;
+  base_vertex: GPUPool;
+  lods: GPUBuffer;
   bounds: GPUBuffer;
   constructor(device: GPUDevice, args?: {
     capacity?: number;
@@ -106,20 +111,20 @@ export class Meshes {
       buffer: this.device.createBuffer({
         label: 'geometry',
         size: args?.heapSize ?? Math.min(this.device.limits.maxBufferSize, mb(512)),
-        usage: GPUBufferUsage.VERTEX | GPUBufferUsage.COPY_DST,
+        usage: GPUBufferUsage.VERTEX | GPUBufferUsage.INDEX | GPUBufferUsage.COPY_DST,
       }),
     });
-    this.vertices = new GPUPool(this.device, {
-      blockSize: Meshes.VERTICES_REF.size,
+    this.base_vertex = new GPUPool(this.device, {
+      blockSize: Meshes.BASE_VERTEX.size,
       buffer: this.device.createBuffer({
         label: 'meshes_vertices',
-        size: this.capacity * Meshes.VERTICES_REF.size,
+        size: this.capacity * Meshes.BASE_VERTEX.size,
         usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
       }),
     });
-    this.indices = this.device.createBuffer({
+    this.lods = this.device.createBuffer({
       label: 'meshes_indices',
-      size: this.capacity * Meshes.INDICES_REF.size,
+      size: this.capacity * Meshes.LODS.size,
       usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
     });
     this.bounds = this.device.createBuffer({
@@ -133,7 +138,7 @@ export class Meshes {
     this.entries.clear();
     this.loaders.clear();
     this.geometry.clear();
-    this.vertices.clear();
+    this.base_vertex.clear();
   }
 
   get(name: MeshName): MeshRef | undefined {
@@ -144,7 +149,7 @@ export class Meshes {
     let ref = this.entries.get(name);
     if (ref === undefined) {
       ref = {
-        id: this.vertices.alloc(),
+        id: this.base_vertex.alloc(),
         geometry: undefined,
         bounds: {
           min: vec3.copy(mesh.bounds.min),
@@ -158,38 +163,91 @@ export class Meshes {
     return ref;
   }
 
-  writeVerticesRef(id: MeshId, offset: number) {
-    this.vertices.write(id, new Uint32Array([offset]));
-  }
-
-  writeIndicesRef(
+  writeLODs(
     id: MeshId,
-    lod0: { offset: number, count: number; },
-    lod1: { offset: number, count: number; },
-    lod2: { offset: number, count: number; },
-    lod3: { offset: number, count: number; },
+    lods: GeometryRefLODs,
   ) {
-    const data = new ArrayBuffer(Meshes.INDICES_REF.size);
+    const data = new ArrayBuffer(Meshes.LODS.size);
     new Uint32Array(data, 0, 8).set([
-      lod0.offset, lod0.count,
-      lod1.offset, lod1.count,
-      lod2.offset, lod2.count,
-      lod3.offset, lod3.count,
+      lods[0].firstIndex, lods[0].indexCount,
+      lods[1].firstIndex, lods[1].indexCount,
+      lods[2].firstIndex, lods[2].indexCount,
+      lods[3].firstIndex, lods[3].indexCount,
     ]);
-    this.device.queue.writeBuffer(this.indices, id * data.byteLength, data);
+    this.device.queue.writeBuffer(this.lods, id * data.byteLength, data);
   }
 
   writeBounds(id: MeshId, bounds: MeshBounds) {
     const data = new ArrayBuffer(Meshes.BOUNDS.size);
-    // Quantize bounds to i16 using the scale.
-    // minQ = floor(min / scale * INT16_MAX)
-    // maxQ = ceil(max / scale * INT16_MAX)
-    const minQ = vec3.floor(vec3.mulScalar(vec3.divScalar(bounds.min, bounds.scale), INT16_MAX));
-    const maxQ = vec3.ceil(vec3.mulScalar(vec3.divScalar(bounds.max, bounds.scale), INT16_MAX));
-    new Int16Array(data, 0, 3).set(minQ);
-    new Int16Array(data, 6, 3).set(maxQ);
-    new Float32Array(data, 12, 1).set([bounds.scale]);
+    const view = Meshes.BOUNDS.view(data);
+    view.min.set(bounds.min);
+    view.max.set(bounds.max);
+    view.scale.set([bounds.scale]);
     this.device.queue.writeBuffer(this.bounds, id * data.byteLength, data);
+  }
+
+  writeGeometry(geometry: Geometry): GeometryRef {
+    const counts = {
+      vertices: geometry.vertices.length,
+      lod0: geometry.indices.lod0.length,
+      lod1: geometry.indices.lod1?.length ?? 0,
+      lod2: geometry.indices.lod2?.length ?? 0,
+      lod3: geometry.indices.lod3?.length ?? 0,
+    };
+
+    const sizes = {
+      vertices: counts.vertices * Meshes.GEOMETRY_VERTEX.size,
+      lod0: counts.lod0 * Meshes.GEOMETRY_INDEX.size,
+      lod1: counts.lod1 * Meshes.GEOMETRY_INDEX.size,
+      lod2: counts.lod2 * Meshes.GEOMETRY_INDEX.size,
+      lod3: counts.lod3 * Meshes.GEOMETRY_INDEX.size,
+    };
+
+    const size = sizes.vertices + sizes.lod0 + sizes.lod1 + sizes.lod2 + sizes.lod3;
+    const slot = this.geometry.alloc(size);
+
+    const vertexData = new ArrayBuffer(sizes.vertices);
+    for (const [i, v] of geometry.vertices.entries()) {
+      const view = Meshes.GEOMETRY_VERTEX.view(vertexData, i);
+      view.position.set(v.position);
+      view.normal.set(v.normal);
+      view.uv.set(v.uv);
+    }
+    this.geometry.write(slot.offset, vertexData);
+
+    const lod0 = { offset: slot.offset + sizes.vertices, count: counts.lod0 };
+    const lod1 = counts.lod1 == 0 ? lod0 : { offset: lod0.offset + sizes.lod0, count: counts.lod1 };
+    const lod2 = counts.lod2 == 0 ? lod1 : { offset: lod1.offset + sizes.lod1, count: counts.lod2 };
+    const lod3 = counts.lod3 == 0 ? lod2 : { offset: lod2.offset + sizes.lod2, count: counts.lod3 };
+
+    const indexData = new Uint32Array(geometry.indices.lod0);
+    this.geometry.write(lod0.offset, indexData.buffer);
+    if (geometry.indices.lod1 && counts.lod1 > 0) {
+      const indexData = new Uint32Array(geometry.indices.lod1);
+      this.geometry.write(lod1.offset, indexData.buffer);
+    }
+    if (geometry.indices.lod2 && counts.lod2 > 0) {
+      const indexData = new Uint32Array(geometry.indices.lod2);
+      this.geometry.write(lod2.offset, indexData.buffer);
+    }
+    if (geometry.indices.lod3 && counts.lod3 > 0) {
+      const indexData = new Uint32Array(geometry.indices.lod3);
+      this.geometry.write(lod3.offset, indexData.buffer);
+    }
+
+    return {
+      baseVertex: slot.offset,
+      lods: [
+        { firstIndex: lod0.offset / Meshes.GEOMETRY_INDEX.size, indexCount: lod0.count },
+        { firstIndex: lod1.offset / Meshes.GEOMETRY_INDEX.size, indexCount: lod1.count },
+        { firstIndex: lod2.offset / Meshes.GEOMETRY_INDEX.size, indexCount: lod2.count },
+        { firstIndex: lod3.offset / Meshes.GEOMETRY_INDEX.size, indexCount: lod3.count },
+      ],
+    };
+  }
+
+  writeBaseVertex(id: MeshId, offset: number) {
+    this.base_vertex.write(id, new Uint32Array([offset]));
   }
 
   async loadGeometry(name: MeshName): Promise<GeometryRef | undefined> {
@@ -205,29 +263,11 @@ export class Meshes {
       return undefined;
     }
     const geometry = await loader();
-    const counts = {
-      vertices: geometry.vertices.length,
-      lod0: geometry.indices.lod0.length,
-      lod1: geometry.indices.lod1?.length ?? 0,
-      lod2: geometry.indices.lod2?.length ?? 0,
-      lod3: geometry.indices.lod3?.length ?? 0,
-    };
-    const sizes = {
-      vertices: counts.vertices * Meshes.GEOMETRY_VERTEX.size,
-      lod0: counts.lod0 * Meshes.GEOMETRY_INDEX.size,
-      lod1: counts.lod1 * Meshes.GEOMETRY_INDEX.size,
-      lod2: counts.lod2 * Meshes.GEOMETRY_INDEX.size,
-      lod3: counts.lod3 * Meshes.GEOMETRY_INDEX.size,
-    };
-    const size = sizes.vertices + sizes.lod0 + sizes.lod1 + sizes.lod2 + sizes.lod3;
-    const slot = this.geometry.alloc(size);
-    const lod0 = { offset: slot.offset + sizes.vertices, count: counts.lod0 };
-    const lod1 = counts.lod1 == 0 ? lod0 : { offset: lod0.offset + sizes.lod0, count: counts.lod1 };
-    const lod2 = counts.lod2 == 0 ? lod1 : { offset: lod1.offset + sizes.lod1, count: counts.lod2 };
-    const lod3 = counts.lod3 == 0 ? lod2 : { offset: lod2.offset + sizes.lod2, count: counts.lod3 };
-    this.writeIndicesRef(mesh.id, lod0, lod1, lod2, lod3);
-    this.writeVerticesRef(mesh.id, slot.offset);
-    // TODO: write vertex and index geometry
+    const ref = this.writeGeometry(geometry);
+    this.entries.set(name, { ...mesh, geometry: ref });
+    this.writeLODs(mesh.id, ref.lods);
+    this.writeBaseVertex(mesh.id, ref.baseVertex);
+    return ref;
   }
 }
 

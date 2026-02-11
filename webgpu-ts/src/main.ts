@@ -26,8 +26,8 @@ async function init(device: GPUDevice): Promise<StateInit<App>> {
   const stage = new Stage(device);
 
   const meshes_pool_cap_mb = (
-    stage.meshes.vertices.buffer.size +
-    stage.meshes.indices.size +
+    stage.meshes.base_vertex.buffer.size +
+    stage.meshes.lods.size +
     stage.meshes.bounds.size
   ) / 1024 / 1024;
   const meshes_heap_cap_mb = stage.meshes.geometry.buffer.size / 1024 / 1024;
