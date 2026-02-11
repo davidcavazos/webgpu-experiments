@@ -23,11 +23,66 @@ export interface MeshRef {
 
 export class Meshes {
   static readonly MAX_CAPACITY = UINT16_MAX;
-  static readonly VERTICES_STRIDE = 4;
-  static readonly INDICES_STRIDE = 32;
-  static readonly BOUNDS_STRIDE = 16;
-  static readonly GEOMETRY_VERTEX_STRIDE = 16;
-  static readonly GEOMETRY_INDEX_STRIDE = 4;
+
+  static readonly VERTICES_REF = {
+    size: 4,
+    view: (data: ArrayBuffer) => ({
+      offset: new Uint32Array(data, 0, 1),
+    }),
+  };
+
+  static readonly INDICES_REF = {
+    size: 32,
+    view: (data: ArrayBuffer) => ({
+      lod0: {
+        offset: new Uint32Array(data, 0, 1),
+        count: new Uint32Array(data, 4, 1),
+      },
+      lod1: {
+        offset: new Uint32Array(data, 8, 1),
+        count: new Uint32Array(data, 12, 1),
+      },
+      lod2: {
+        offset: new Uint32Array(data, 16, 1),
+        count: new Uint32Array(data, 20, 1),
+      },
+      lod3: {
+        offset: new Uint32Array(data, 24, 1),
+        count: new Uint32Array(data, 28, 1),
+      },
+    }),
+  };
+
+  // https://webgpufundamentals.org/webgpu/lessons/resources/wgsl-offset-computer.html#x=5d00000100d000000000000000003d888b0237284d03d2258bce8be1af0081f03468f71776d4f392dc8bbd6c35c7a3a1cbc4075a9de2f64eed23c38f74bcd087f2fd447185f21e3b9f3e6cf38930abc114ae8e1352e1cf62d16adf6b59aa46b8e65bf8d8be12e1fe0c64302987163da012947df65c503899810408370d765930d973bf24c6f90743ab68a3c40b962cca6f889b9e9f22894aed5ba6afb7f1a2d0ffff6ccc0000
+  static readonly BOUNDS = {
+    size: 32,
+    view: (data: ArrayBuffer) => ({
+      min: new Float32Array(data, 0, 3),
+      scale: new Float32Array(data, 12, 1),
+      max: new Float32Array(data, 16, 3),
+    }),
+  };
+
+  // https://webgpufundamentals.org/webgpu/lessons/resources/wgsl-offset-computer.html#x=5d000001000a01000000000000003d888b0237284d03d2258bce8be1af0081f03468f71776d4f392dc8bbd6cd12bb77ae4df8a541430a62ceaa7a28e236f1ecf27ebbf8baf2dd0c87683f1d45382f492f7500ab40c37e99189de5f8fe963927340abfab3fea597fad52ec74c368723453ef9d30836947c5209e7ce1a9aaadc03120146d64a47c2f2f2ea6b578b302df1b6361dfd53388c2551c8b4e826d59d166017ae06c9e339f2ae3f598c9e81da7cba7edac13d280f5fff0f011a00
+  static readonly GEOMETRY_VERTEX = {
+    size: 32,
+    view: (data: ArrayBuffer) => ({
+      position: new Float32Array(data, 0, 3),
+      normal: new Float16Array(data, 16, 3),
+      uv: new Float16Array(data, 24, 2),
+    }),
+    attributes: [
+      { shaderLocation: 0, offset: 0, format: 'float32x3' }, //  position
+      { shaderLocation: 1, offset: 16, format: 'float16x4' }, // normal
+      { shaderLocation: 2, offset: 24, format: 'float16x2' }, // uv
+    ],
+  };
+  static readonly GEOMETRY_INDEX = {
+    size: 4,
+    view: (data: ArrayBuffer) => ({
+      index: new Uint32Array(data, 0, 1),
+    }),
+  };
   device: GPUDevice;
   capacity: number;
   entries: Map<MeshName, MeshRef>;
@@ -55,21 +110,21 @@ export class Meshes {
       }),
     });
     this.vertices = new GPUPool(this.device, {
-      blockSize: Meshes.VERTICES_STRIDE,
+      blockSize: Meshes.VERTICES_REF.size,
       buffer: this.device.createBuffer({
         label: 'meshes_vertices',
-        size: this.capacity * Meshes.VERTICES_STRIDE,
+        size: this.capacity * Meshes.VERTICES_REF.size,
         usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
       }),
     });
     this.indices = this.device.createBuffer({
       label: 'meshes_indices',
-      size: this.capacity * Meshes.INDICES_STRIDE,
+      size: this.capacity * Meshes.INDICES_REF.size,
       usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
     });
     this.bounds = this.device.createBuffer({
       label: 'meshes_bounds',
-      size: this.capacity * Meshes.BOUNDS_STRIDE,
+      size: this.capacity * Meshes.BOUNDS.size,
       usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
     });
   };
@@ -114,7 +169,7 @@ export class Meshes {
     lod2: { offset: number, count: number; },
     lod3: { offset: number, count: number; },
   ) {
-    const data = new ArrayBuffer(Meshes.INDICES_STRIDE);
+    const data = new ArrayBuffer(Meshes.INDICES_REF.size);
     new Uint32Array(data, 0, 8).set([
       lod0.offset, lod0.count,
       lod1.offset, lod1.count,
@@ -125,7 +180,7 @@ export class Meshes {
   }
 
   writeBounds(id: MeshId, bounds: MeshBounds) {
-    const data = new ArrayBuffer(Meshes.BOUNDS_STRIDE);
+    const data = new ArrayBuffer(Meshes.BOUNDS.size);
     // Quantize bounds to i16 using the scale.
     // minQ = floor(min / scale * INT16_MAX)
     // maxQ = ceil(max / scale * INT16_MAX)
@@ -158,11 +213,11 @@ export class Meshes {
       lod3: geometry.indices.lod3?.length ?? 0,
     };
     const sizes = {
-      vertices: counts.vertices * Meshes.GEOMETRY_VERTEX_STRIDE,
-      lod0: counts.lod0 * Meshes.GEOMETRY_INDEX_STRIDE,
-      lod1: counts.lod1 * Meshes.GEOMETRY_INDEX_STRIDE,
-      lod2: counts.lod2 * Meshes.GEOMETRY_INDEX_STRIDE,
-      lod3: counts.lod3 * Meshes.GEOMETRY_INDEX_STRIDE,
+      vertices: counts.vertices * Meshes.GEOMETRY_VERTEX.size,
+      lod0: counts.lod0 * Meshes.GEOMETRY_INDEX.size,
+      lod1: counts.lod1 * Meshes.GEOMETRY_INDEX.size,
+      lod2: counts.lod2 * Meshes.GEOMETRY_INDEX.size,
+      lod3: counts.lod3 * Meshes.GEOMETRY_INDEX.size,
     };
     const size = sizes.vertices + sizes.lod0 + sizes.lod1 + sizes.lod2 + sizes.lod3;
     const slot = this.geometry.alloc(size);
@@ -172,6 +227,7 @@ export class Meshes {
     const lod3 = counts.lod3 == 0 ? lod2 : { offset: lod2.offset + sizes.lod2, count: counts.lod3 };
     this.writeIndicesRef(mesh.id, lod0, lod1, lod2, lod3);
     this.writeVerticesRef(mesh.id, slot.offset);
+    // TODO: write vertex and index geometry
   }
 }
 

@@ -10,7 +10,30 @@ struct Globals {
   entities_size: u32,
 };
 
+// // TODO: optimize packing to 16 bytes
+// // https://webgpufundamentals.org/webgpu/lessons/resources/wgsl-offset-computer.html#x=5d000001001901000000000000003d888b0237284d03d2258bce8be1af0081f03468f71776d4f392dc8bbd6cd12bb77ae4df8a541430a62ceaa7a28e236f1ecf27ebbf8baf2dd0c87683f1d45386f2313fccb76ba6d2280f33570a99caa06e11a6c19659999a3dd7dd5c22fc6d7e69fae93d2b0b2d426149b164aaa43cd9098286ea1ffd24056741344726a8b1da9e7502c14470e4d0c9d629c487235edd13f152a52ce1b72c2585943a2a609ed909fb2a0023f6907b60707504d7df3ab123442e9f924079055d746a7e9ffe491296
+// struct VertexInput {
+//   @location(0) position_quantized: vec2<u32>,
+//   @location(1) normal_octahedral: u32,
+//   @location(2) uv: vec2<f16>,
+// };
+
+// https://webgpufundamentals.org/webgpu/lessons/resources/wgsl-offset-computer.html#x=5d000001000a01000000000000003d888b0237284d03d2258bce8be1af0081f03468f71776d4f392dc8bbd6cd12bb77ae4df8a541430a62ceaa7a28e236f1ecf27ebbf8baf2dd0c87683f1d45382f492f7500ab40c37e99189de5f8fe963927340abfab3fea597fad52ec74c368723453ef9d30836947c5209e7ce1a9aaadc03120146d64a47c2f2f2ea6b578b302df1b6361dfd53388c2551c8b4e826d59d166017ae06c9e339f2ae3f598c9e81da7cba7edac13d280f5fff0f011a00
+struct VertexInput {
+  @location(0) position: vec3<f32>,
+  @location(1) normal: vec3<f16>,
+  @location(2) uv: vec2<f16>,
+};
+
+// https://webgpufundamentals.org/webgpu/lessons/resources/wgsl-offset-computer.html#x=5d00000100ec00000000000000003d888b0237284d03d2258bce8be1af0081f03468f71776d4f392dc8bbd6cd12bb77ae4dfd8a046020b17bcf2f27cfcc4a63276e5601913013a15c3e8385704d2349ea7fceeb3a0456d3b02555e0d5f400f59b0a799ffc6075a4e258a53ba03261e64c950686943e6835c1fa03297f3ac851c0125073a2c790c854f757d1fc7f78da8e22d94c0deb96498f9de9560a6c936b9a95b18d54176a3331c3185f905584ff404db463e3ffff0302800
+struct VertexOutput {
+  @builtin(position) position: vec4f,
+  @location(0) normal: vec3f,
+};
+
 alias EntityId = u32;
+
+// https://webgpufundamentals.org/webgpu/lessons/resources/wgsl-offset-computer.html#x=5d000001000001000000000000003d888b0237284d03d2258bce8be1af0081f03468f71776d4f392dc8bbd6c35c7a3a1cbc54b3eb16a2bbef5804c9e0103e694e7446ffab06605762d90b036f34effb09a2f69af6ccaa7d91ac4bba574a0e893af33564b7a793b8cfd7c76856412dff404392c1f8d348626d01a08cb84bbd597fde188effe84fada3063e8284e8f01730a7902ea332929710e0ffeafd4754c0e9ab00efbb51e55edc3753bb0f9be4e69b611d0e7fbcf29616284ed2716063ffe145a6a
 struct EntityLocal {
   position: vec3f,
   scale: f32,
@@ -27,6 +50,7 @@ fn is_opaque(flags: u32) -> bool {
   return (flags & FLAGS_OPAQUE) != 0;
 }
 
+// https://webgpufundamentals.org/webgpu/lessons/resources/wgsl-offset-computer.html#x=5d000001000201000000000000003d888b0237284d03d2258bce8be1af0081f03468f71776d4f392dc8bbd6c35c7a3a1cbc6af8c694aebd940592d9ce05feeb189d5b416cc41a18d80e107a412514fb7d6253fc69bcbc648e8bc938b6fe86e3983b6f8b44346ba58f0cf27b3bdf2580f110bfd206f78c896a418d28566b4559cbb6ebdab89f0364c396c1d313b25db0992448cf181265afb56d49f7ac4c6daac2ffaac2c8ab03b537849b2ef7f34f7b529f6c27d5005479f06644a3a51b7f3fff375f22a
 struct EntityWorld {
   position: vec3f,
   scale: f32,
@@ -34,6 +58,13 @@ struct EntityWorld {
   morton_code: u32,
   flags: u32,
 };
+
+// https://webgpufundamentals.org/webgpu/lessons/resources/wgsl-offset-computer.html#x=5d00000100d000000000000000003d888b0237284d03d2258bce8be1af0081f03468f71776d4f392dc8bbd6c35c7a3a1cbc4075a9de2f64eed23c38f74bcd087f2fd447185f21e3b9f3e6cf38930abc114ae8e1352e1cf62d16adf6b59aa46b8e65bf8d8be12e1fe0c64302987163da012947df65c503899810408370d765930d973bf24c6f90743ab68a3c40b962cca6f889b9e9f22894aed5ba6afb7f1a2d0ffff6ccc0000
+struct EntityBounds {
+  min: vec3f,
+  scale: f32,
+  max: vec3f,
+}
 
 fn transform_matrix(pos: vec3f, rotation: Quat, scale: f32) -> mat4x4f {
   // https://github.com/greggman/wgpu-matrix/blob/31963458dcafa4cf430d981afd9b31bc5eba55e3/src/mat4-impl.ts#L193
