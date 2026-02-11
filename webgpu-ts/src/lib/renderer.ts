@@ -107,9 +107,9 @@ export class Renderer {
         continue;
       }
       pass.drawIndexed(
-        mesh.geometry.lods[0].indexCount,
+        mesh.geometry.lod0.indexCount,
         1, //instanceCount
-        mesh.geometry.lods[0].firstIndex,
+        mesh.geometry.lod0.firstIndex,
         mesh.geometry.baseVertex,
         0, // firstInstance
       );

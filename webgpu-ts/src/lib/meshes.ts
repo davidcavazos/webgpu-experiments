@@ -4,15 +4,12 @@ import { GPUHeap, type GPUHeapSlot } from "./gpu/heap";
 import { GPUPool } from "./gpu/pool";
 import type { Geometry, Mesh, MeshName } from "./scene";
 
-type GeometryRefLODs = [
-  { firstIndex: number, indexCount: number; },
-  { firstIndex: number, indexCount: number; },
-  { firstIndex: number, indexCount: number; },
-  { firstIndex: number, indexCount: number; },
-];
 export interface GeometryRef {
   baseVertex: number;
-  lods: GeometryRefLODs;
+  lod0: { firstIndex: number, indexCount: number; },
+  lod1: { firstIndex: number, indexCount: number; },
+  lod2: { firstIndex: number, indexCount: number; },
+  lod3: { firstIndex: number, indexCount: number; },
 }
 
 export type MeshId = number;
@@ -165,14 +162,14 @@ export class Meshes {
 
   writeLODs(
     id: MeshId,
-    lods: GeometryRefLODs,
+    ref: GeometryRef,
   ) {
     const data = new ArrayBuffer(Meshes.LODS.size);
     new Uint32Array(data, 0, 8).set([
-      lods[0].firstIndex, lods[0].indexCount,
-      lods[1].firstIndex, lods[1].indexCount,
-      lods[2].firstIndex, lods[2].indexCount,
-      lods[3].firstIndex, lods[3].indexCount,
+      ref.lod0.firstIndex, ref.lod0.indexCount,
+      ref.lod1.firstIndex, ref.lod1.indexCount,
+      ref.lod2.firstIndex, ref.lod2.indexCount,
+      ref.lod3.firstIndex, ref.lod3.indexCount,
     ]);
     this.device.queue.writeBuffer(this.lods, id * data.byteLength, data);
   }
@@ -237,12 +234,10 @@ export class Meshes {
 
     return {
       baseVertex: slot.offset,
-      lods: [
-        { firstIndex: lod0.offset / Meshes.GEOMETRY_INDEX.size, indexCount: lod0.count },
-        { firstIndex: lod1.offset / Meshes.GEOMETRY_INDEX.size, indexCount: lod1.count },
-        { firstIndex: lod2.offset / Meshes.GEOMETRY_INDEX.size, indexCount: lod2.count },
-        { firstIndex: lod3.offset / Meshes.GEOMETRY_INDEX.size, indexCount: lod3.count },
-      ],
+      lod0: { firstIndex: lod0.offset / Meshes.GEOMETRY_INDEX.size, indexCount: lod0.count },
+      lod1: { firstIndex: lod1.offset / Meshes.GEOMETRY_INDEX.size, indexCount: lod1.count },
+      lod2: { firstIndex: lod2.offset / Meshes.GEOMETRY_INDEX.size, indexCount: lod2.count },
+      lod3: { firstIndex: lod3.offset / Meshes.GEOMETRY_INDEX.size, indexCount: lod3.count },
     };
   }
 
@@ -265,7 +260,7 @@ export class Meshes {
     const geometry = await loader();
     const ref = this.writeGeometry(geometry);
     this.entries.set(name, { ...mesh, geometry: ref });
-    this.writeLODs(mesh.id, ref.lods);
+    this.writeLODs(mesh.id, ref);
     this.writeBaseVertex(mesh.id, ref.baseVertex);
     return ref;
   }
