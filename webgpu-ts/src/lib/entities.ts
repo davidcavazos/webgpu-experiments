@@ -1,12 +1,13 @@
 import { quat, vec3, type QuatArg, type Vec3Arg } from "wgpu-matrix";
 import { GPUPool } from "./gpu/pool";
-import type { MeshId } from "./meshes";
-import type { MeshName } from "./scene";
+import type { MeshId, MeshName, MeshRef } from "./meshes";
 import { UINT16_MAX, UINT32_MAX } from "./stdlib";
 import type { MaterialName } from "./materials";
+import { Cameras, type Camera, type CameraId } from "./cameras";
+import type { LightId } from "./lights";
 
-export const FLAGS_SLEEP /* */ = 1 << 0;
-export const FLAGS_OPAQUE /**/ = 1 << 1;
+export const FLAGS_SLEEP = 1 << 0;
+export const FLAGS_OPAQUE = 1 << 1;
 
 export type Transform = {
   position?: Vec3Arg;
@@ -22,8 +23,8 @@ export interface Entity {
   transform?: Transform;
   mesh?: MeshName;
   material?: MaterialName;
-  camera?: EntityId;
-  light?: EntityId;
+  camera?: CameraId;
+  light?: LightId;
   children?: Record<EntityName, Entity>;
   opaque?: boolean;
 }
@@ -31,6 +32,9 @@ export type EntityRef = {
   id: EntityId;
   name: EntityName;
   mesh?: MeshName;
+  material?: MaterialName;
+  camera?: CameraId;
+  light?: LightId;
   opaque?: boolean;
 };
 
@@ -83,8 +87,12 @@ export class Entities {
   material: GPUBuffer;
   view: GPUBuffer;
   subscriptions: GPUBuffer;
+  cameras: Cameras;
 
-  constructor(device: GPUDevice, args?: { capacity?: number; }) {
+  constructor(device: GPUDevice, args?: {
+    capacity?: number;
+    camerasCapacity?: number;
+  }) {
     this.device = device;
     this.capacity = args?.capacity ?? 1000000;
     this.entries = new Map();
@@ -126,6 +134,9 @@ export class Entities {
       size: this.capacity * Entities.SUBSCRIPTIONS.size,
       usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
     });
+    this.cameras = new Cameras(this.device, {
+      capacity: args?.camerasCapacity,
+    });
   }
 
   *[Symbol.iterator](): IterableIterator<EntityRef> {
@@ -159,11 +170,15 @@ export class Entities {
     if (ref !== undefined) {
       return ref;
     }
-    const id = this.local.alloc();
+    const id = this.local.allocate();
     this.entries.set(name, { id, name });
     return { id, name };
   }
 
+  setLocal(ref: EntityRef, entity: Entity) {
+    this.entries.set(ref.name, ref);
+    this.writeLocal(ref.id, entity);
+  }
   writeLocal(id: EntityId, entity: Entity) {
     const data = new ArrayBuffer(Entities.LOCAL.size);
     const view = Entities.LOCAL.view(data);
@@ -177,6 +192,10 @@ export class Entities {
     this.local.write(id, data);
   }
 
+  setMesh(ref: EntityRef, mesh: MeshRef | undefined) {
+    this.entries.set(ref.name, { ...ref, mesh: mesh?.name });
+    this.writeMesh(ref.id, mesh?.id);
+  }
   writeMesh(id: EntityId, meshId: MeshId | undefined) {
     const data = new ArrayBuffer(Entities.MESH.size);
     const view = Entities.MESH.view(data);
@@ -185,5 +204,17 @@ export class Entities {
   }
 
   // TODO: setMaterial
+
+  setCamera(ref: EntityRef, camera: Camera) {
+    const cameraRef = this.cameras.set(ref.name, camera);
+    this.writeCamera(ref.id, cameraRef.id);
+  }
+  writeCamera(id: EntityId, cameraId: CameraId | undefined) {
+    const data = new ArrayBuffer(Entities.VIEW.size);
+    const view = Entities.VIEW.view(data);
+    view.camera_id.set([cameraId ?? UINT16_MAX]);
+    this.device.queue.writeBuffer(this.view, id * data.byteLength, data);
+  }
+
   // TODO: setSubscription
 }

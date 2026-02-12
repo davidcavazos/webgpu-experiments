@@ -43,16 +43,16 @@ async function init(device: GPUDevice): Promise<StateInit<App>> {
     stage.entities.material.size +
     stage.entities.subscriptions.size
   ) / 1024 / 1024;
-  const entities_heap_cap_mb = 0 / 1024 / 1024;
+  const entities_cameras_cap_mb = stage.entities.cameras.pool.buffer.size / 1024 / 1024;
   const allocated_total_mb = (
     meshes_pool_cap_mb + meshes_heap_cap_mb +
-    entities_pool_cap_mb + entities_heap_cap_mb
+    entities_pool_cap_mb + entities_cameras_cap_mb
   );
   console.log(`--- Memory allocated (${allocated_total_mb.toFixed(2)} MiB) ---`);
   console.log(` meshes.pool: ${meshes_pool_cap_mb.toFixed(2)} MiB (${stage.meshes.capacity} capacity)`);
   console.log(` meshes.heap: ${meshes_heap_cap_mb.toFixed(2)} MiB`);
   console.log(` entities.pool: ${entities_pool_cap_mb.toFixed(2)} MiB (${stage.entities.capacity} capacity)`);
-  console.log(` entities.heap: ${entities_heap_cap_mb.toFixed(2)} MiB`);
+  console.log(` entities.cameras: ${entities_cameras_cap_mb.toFixed(2)} MiB`);
 
   // Check for shader compilation errors.
   // for (const [pass, { shaderModule }] of Object.entries(renderer.passes)) {
@@ -82,7 +82,11 @@ async function init(device: GPUDevice): Promise<StateInit<App>> {
   stage.load(scene);
 
   const camera = stage.find("skp_camera_Last_Saved_SketchUp_View");
-  stage.viewports.set(camera?.id ?? UINT32_MAX, {
+  if (!camera) {
+    // TODO: add default camera
+    throw new Error("Camera not found in scene");
+  }
+  stage.setViewport(camera, {
     width: canvas.width,
     height: canvas.height,
   });
@@ -98,7 +102,7 @@ async function init(device: GPUDevice): Promise<StateInit<App>> {
   console.log(` meshes.pool: ${(stage.meshes.entries.size / stage.meshes.capacity * 100).toFixed(1)}% (${stage.meshes.entries.size} count)`);
   console.log(` meshes.heap: ${(meshes_heap_use_mb / meshes_heap_cap_mb * 100).toFixed(1)}% (${meshes_heap_use_mb.toFixed(2)} MiB)`);
   console.log(` entities.pool: ${(stage.entities.entries.size / stage.entities.capacity * 100).toFixed(2)}% (${stage.entities.entries.size} count)`);
-  console.log(` entities.heap: ${(entities_heap_use_mb / entities_heap_cap_mb * 100).toFixed(1)}% (${entities_heap_use_mb.toFixed(2)} MiB)`);
+  console.log(` entities.heap: ${(entities_heap_use_mb / entities_cameras_cap_mb * 100).toFixed(1)}% (${entities_heap_use_mb.toFixed(2)} MiB)`);
 
   // Return the initial state.
   return {

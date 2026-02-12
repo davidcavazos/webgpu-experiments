@@ -1,3 +1,4 @@
+import { Cameras } from "./cameras";
 import { Entities, type Entity, type EntityId, type EntityName, type EntityRef } from "./entities";
 import type { Material, MaterialName } from "./materials";
 import { Meshes, type Mesh, type MeshName, type MeshRef } from "./meshes";
@@ -23,12 +24,16 @@ export class Stage {
   constructor(device: GPUDevice, args?: {
     entities?: {
       capacity?: number,
+      camerasCapacity?: number,
     },
     meshes?: {
       capacity?: number,
       heapSize?: number,
     };
     views?: {
+      capacity?: number,
+    };
+    cameras?: {
       capacity?: number,
     };
   }) {
@@ -40,6 +45,7 @@ export class Stage {
     });
     this.entities = new Entities(this.device, {
       capacity: args?.entities?.capacity,
+      camerasCapacity: args?.entities?.camerasCapacity,
     });
     this.meshes = new Meshes(this.device, {
       capacity: args?.meshes?.capacity,
@@ -56,12 +62,11 @@ export class Stage {
     this.meshes.clear();
   }
 
-  setViewport(name: EntityName, viewport: Viewport) {
-    const entity = this.entities.get(name);
-    if (!entity) {
-      throw new Error(`Entity ${name} not found`);
+  setViewport(ref: EntityRef, viewport: Viewport) {
+    if (ref.camera === undefined) {
+      // this.entities.
     }
-    this.viewports.set(entity.id, viewport);
+    this.viewports.set(ref.id, viewport);
   }
 
   find(name: EntityName): EntityRef | undefined {
@@ -94,24 +99,18 @@ export class Stage {
 
   loadEntity(name: EntityName, entity: Entity): EntityRef {
     const ref = this.entities.add(name);
-    this.updateEntityLocal(ref, entity);
-    this.updateEntityMesh(ref, entity.mesh);
+    this.entities.setLocal(ref, entity);
+    if (entity.mesh) {
+      const meshRef = this.meshes.get(entity.mesh);
+      if (meshRef === undefined) {
+        throw new Error(`Mesh ${entity.mesh} not found for entity ${name}`);
+      }
+      this.entities.setMesh(ref, meshRef);
+    }
     for (const [childName, child] of Object.entries(entity.children ?? {})) {
       this.loadEntity(`${name}/${childName}`, { ...child, parentId: ref.id });
     }
     return ref;
-  }
-
-  updateEntityLocal(ref: EntityRef, entity: Entity) {
-    this.entities.set(ref.name, { ...ref, opaque: entity.opaque });
-    this.entities.writeLocal(ref.id, entity);
-  }
-  updateEntityMesh(ref: EntityRef, mesh: MeshName | undefined) {
-    if (mesh && mesh !== ref.mesh) {
-      this.entities.set(ref.name, { ...ref, mesh });
-      const meshId = this.meshes.get(mesh)?.id;
-      this.entities.writeMesh(ref.id, meshId);
-    }
   }
 
   loadMesh(name: MeshName, mesh: Mesh): MeshRef {

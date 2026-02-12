@@ -43,6 +43,7 @@ export interface MeshBounds {
 }
 export interface MeshRef {
   id: MeshId;
+  name: MeshName;
   geometry: GeometryRef | undefined;
   bounds: MeshBounds;
 }
@@ -169,7 +170,8 @@ export class Meshes {
     let ref = this.entries.get(name);
     if (ref === undefined) {
       ref = {
-        id: this.base_vertex.alloc(),
+        id: this.base_vertex.allocate(),
+        name,
         geometry: undefined,
         bounds: {
           min: vec3.copy(mesh.bounds.min),

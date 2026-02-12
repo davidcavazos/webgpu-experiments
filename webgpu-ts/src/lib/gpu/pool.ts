@@ -19,7 +19,7 @@ export class GPUPool {
     this.freeIndices.clear();
   }
 
-  alloc(): GPUIndex {
+  allocate(): GPUIndex {
     let index = this.freeIndices.values().next().value;
     if (index !== undefined) {
       this.freeIndices.delete(index);
