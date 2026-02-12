@@ -9,7 +9,7 @@ export class Renderer {
   canvas: HTMLCanvasElement;
   context: GPUCanvasContext;
   stage: Stage;
-  passes: {
+  pass: {
     flatten: Flatten;
   };
   opaque: GPURenderPipeline;
@@ -32,7 +32,7 @@ export class Renderer {
     });
 
     this.stage = args.stage;
-    this.passes = {
+    this.pass = {
       flatten: new Flatten(this.device, {
         globals: this.stage.globals,
         entities_local: this.stage.entities.local.buffer,
@@ -43,6 +43,7 @@ export class Renderer {
     const renderModule = this.device.createShaderModule({
       code: renderCode,
     });
+    // TODO: make opaque into its own class, into this.pass.
     this.opaque = this.device.createRenderPipeline({
       label: 'opaque',
       layout: this.device.createPipelineLayout({
@@ -80,7 +81,7 @@ export class Renderer {
 
     this.stage.writeGlobals();
     const encoder = this.device.createCommandEncoder();
-    this.passes.flatten.dispatch(encoder, this.stage.entities.size(), current);
+    this.pass.flatten.dispatch(encoder, this.stage.entities.size(), current);
     this.renderOpaque(encoder);
     this.device.queue.submit([encoder.finish()]);
   }
@@ -98,6 +99,7 @@ export class Renderer {
     pass.setPipeline(this.opaque);
     pass.setVertexBuffer(0, this.stage.meshes.geometry.buffer);
     pass.setIndexBuffer(this.stage.meshes.geometry.buffer, Meshes.GEOMETRY_INDEX.format);
+    // TODO: replace loop with render bundle.
     for (const ref of this.stage.entities) {
       if (ref.mesh === undefined) {
         continue;
