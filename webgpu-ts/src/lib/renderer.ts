@@ -98,7 +98,7 @@ export class Renderer {
     pass.setPipeline(this.opaque);
     pass.setVertexBuffer(0, this.stage.meshes.geometry.buffer);
     pass.setIndexBuffer(this.stage.meshes.geometry.buffer, Meshes.GEOMETRY_INDEX.format);
-    for (const [name, ref] of this.stage.entities) {
+    for (const ref of this.stage.entities) {
       if (ref.mesh === undefined) {
         continue;
       }
@@ -159,14 +159,12 @@ struct VertexOutput {
   );
 
   output.position = vec4f(pos[vertex_id % 3], 0.0, 1.0);
-  // output.normal = vec3f(input.normal);
+  output.normal = vec3f(input.normal);
   return output;
 }
 
 @fragment fn opaque_fragment(input: VertexOutput) -> @location(0) vec4f {
-  // return vec4f(input.normal * 0.5 + 0.5, 1);
-  // return vec4f(input.normal, 1);
-  return vec4f(1, 1, 1, 1);
+  return vec4f(input.normal * 0.5 + 0.5, 1);
 }
 
 `;

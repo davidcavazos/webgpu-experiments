@@ -5,11 +5,15 @@ import { Stage } from "./lib/stage";
 import { Transform } from "./lib/transform";
 import { load } from "./lib/load";
 import type { Renderer } from "./lib/renderer";
+import { findEntity } from "./lib/scene";
+import type { EntityId } from "./lib/entities";
+import { UINT32_MAX } from "./lib/stdlib";
 
 const canvas: HTMLCanvasElement = document.querySelector("#canvas")!;
 
 interface App {
   cursor: Vec3;
+  camera: EntityId;
   input: {
     mouse: io.Mouse;
     keyboard: io.Keyboard;
@@ -77,6 +81,9 @@ async function init(device: GPUDevice): Promise<StateInit<App>> {
   const scene = await load("assets/experiment/apartment_small/scene.gltf");
   stage.load(scene);
 
+  const camera = stage.find("skp_camera_Last_Saved_SketchUp_View");
+  console.log(camera);
+
   // TODO: do not load geometry here, stream as needed by cpu_feedback
   for (const name of stage.meshes.entries.keys()) {
     await stage.meshes.loadGeometry(name);
@@ -95,6 +102,7 @@ async function init(device: GPUDevice): Promise<StateInit<App>> {
     stage,
     app: {
       cursor: vec3.create(),
+      camera: camera?.id ?? UINT32_MAX,
       input: {
         mouse: new io.Mouse(),
         keyboard: new io.Keyboard(),

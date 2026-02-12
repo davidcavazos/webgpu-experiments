@@ -2,17 +2,34 @@ import { Entities, type EntityId, type EntityRef } from "./entities";
 import { Meshes, type MeshId, type MeshRef } from "./meshes";
 import type { Entity, EntityName, Material, MaterialName, Mesh, MeshName, Scene } from "./scene";
 import { UINT32_MAX } from "./stdlib";
+import { Views } from "./views";
+
+export interface Viewport {
+  x?: number;
+  y?: number;
+  width?: number;
+  height?: number;
+}
 
 export class Stage {
   device: GPUDevice;
   globals: GPUBuffer;
   entities: Entities;
   meshes: Meshes;
+  views: Views;
+  viewports: Map<EntityId, Viewport>;
 
   constructor(device: GPUDevice, args?: {
-    entitiesPoolCapacity?: number,
-    meshesPoolCapacity?: number,
-    geometryHeapSize?: number,
+    entities?: {
+      capacity?: number,
+    },
+    meshes?: {
+      capacity?: number,
+      heapSize?: number,
+    };
+    views?: {
+      capacity?: number,
+    };
   }) {
     this.device = device;
     this.globals = this.device.createBuffer({
@@ -21,17 +38,36 @@ export class Stage {
       usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
     });
     this.entities = new Entities(this.device, {
-      capacity: args?.entitiesPoolCapacity,
+      capacity: args?.entities?.capacity,
     });
     this.meshes = new Meshes(this.device, {
-      capacity: args?.meshesPoolCapacity,
-      heapSize: args?.geometryHeapSize,
+      capacity: args?.meshes?.capacity,
+      heapSize: args?.meshes?.heapSize,
     });
+    this.views = new Views(this.device, {
+      capacity: args?.views?.capacity,
+    });
+    this.viewports = new Map();
   }
 
   clear() {
     this.entities.clear();
     this.meshes.clear();
+  }
+
+  find(name: EntityName): EntityRef | undefined {
+    // Try exact match first.
+    const ref = this.entities.entries.get(name);
+    if (ref !== undefined) {
+      return ref;
+    }
+    // Try to find by suffix.
+    for (const ref of this.entities) {
+      if (ref.name.endsWith(`/${name}`)) {
+        return ref;
+      }
+    }
+    return undefined;
   }
 
   load(scene: Scene) {
@@ -52,7 +88,7 @@ export class Stage {
     this.updateEntityLocal(ref, entity);
     this.updateEntityMesh(ref, entity.mesh);
     for (const [childName, child] of Object.entries(entity.children ?? {})) {
-      this.loadEntity(childName, { ...child, parentId: ref.id });
+      this.loadEntity(`${name}/${childName}`, { ...child, parentId: ref.id });
     }
     return ref;
   }

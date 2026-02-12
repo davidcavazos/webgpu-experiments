@@ -19,7 +19,7 @@ function toScene(node: THREE.Object3D): Scene {
     meshes: {},
     materials: {},
   };
-  const [entityName, entity] = toEntity(node);
+  const entity = toEntity(node);
   if (node.type === 'Mesh') {
     const [meshName, mesh] = toMesh(node as THREE.Mesh);
     entity.mesh = meshName;
@@ -39,13 +39,13 @@ function toScene(node: THREE.Object3D): Scene {
   if (children.length > 0) {
     entity.children = Object.fromEntries(children);
   }
-  scene.entities = { [entityName]: entity };
+  scene.entities = { [entity.name]: entity };
   return scene;
 }
 
-function toEntity(node: THREE.Object3D): [EntityName, Entity] {
-  const name = node.name;
+function toEntity(node: THREE.Object3D): Entity {
   const entity: Entity = {
+    name: node.name,
     transform: {
       position: [node.position.x, node.position.y, node.position.z],
       rotation: [
@@ -57,7 +57,7 @@ function toEntity(node: THREE.Object3D): [EntityName, Entity] {
       scale: (node.scale.x + node.scale.y + node.scale.z) / 3.0,
     },
   };
-  return [name, entity];
+  return entity;
 }
 
 function toMesh(node: THREE.Mesh): [MeshName, Mesh] {

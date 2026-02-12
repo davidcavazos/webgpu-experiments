@@ -97,8 +97,8 @@ export class Entities {
     });
   }
 
-  *[Symbol.iterator](): IterableIterator<[EntityName, EntityRef]> {
-    yield* this.entries;
+  *[Symbol.iterator](): IterableIterator<EntityRef> {
+    yield* this.entries.values();
   }
 
   clear() {
