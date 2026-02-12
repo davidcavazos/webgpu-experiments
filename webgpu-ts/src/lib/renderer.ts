@@ -118,6 +118,10 @@ export class Renderer {
     }
     pass.end();
   }
+
+  resizeViewports() {
+    this.stage.resizeViewports(this.canvas.width, this.canvas.height);
+  }
 }
 
 const renderCode = /* wgsl */`

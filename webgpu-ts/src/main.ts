@@ -1,19 +1,15 @@
-import { mat4, vec3, type Mat4, type Vec3 } from "wgpu-matrix";
+import { mat4, vec3, type Vec3 } from "wgpu-matrix";
 import * as io from "./lib/io";
 import { start, type InitState as StateInit, type State } from "./lib/start";
 import { Stage } from "./lib/stage";
-import { Transform } from "./lib/transform";
 import { load } from "./lib/load";
-import type { Renderer } from "./lib/renderer";
-import { findEntity } from "./lib/scene";
-import type { EntityId } from "./lib/entities";
+import type { EntityId, EntityRef } from "./lib/entities";
 import { UINT32_MAX } from "./lib/stdlib";
 
 const canvas: HTMLCanvasElement = document.querySelector("#canvas")!;
 
 interface App {
   cursor: Vec3;
-  camera: EntityId;
   input: {
     mouse: io.Mouse;
     keyboard: io.Keyboard;
@@ -87,8 +83,12 @@ async function init(device: GPUDevice): Promise<StateInit<App>> {
     throw new Error("Camera not found in scene");
   }
   stage.setViewport(camera, {
-    width: canvas.width,
-    height: canvas.height,
+    projection: (width, height) => mat4.perspective(
+      100, // fieldOfView
+      width / height, // aspect
+      1, // zNear
+      1000, // zFar
+    ),
   });
 
   // TODO: do not load geometry here, stream as needed by cpu_feedback
@@ -109,7 +109,6 @@ async function init(device: GPUDevice): Promise<StateInit<App>> {
     stage,
     app: {
       cursor: vec3.create(),
-      camera: camera?.id ?? UINT32_MAX,
       input: {
         mouse: new io.Mouse(),
         keyboard: new io.Keyboard(),
@@ -122,17 +121,6 @@ async function init(device: GPUDevice): Promise<StateInit<App>> {
     },
   };
 }
-
-// function resize(app: App, width: number, height: number): App {
-//   // return mat4.perspective(
-//   //   100, // fieldOfView
-//   //   width / height, // aspect
-//   //   1, // zNear
-//   //   1000, // zFar
-//   //   projection, // dst
-//   // );
-//   return { ...app, canvas: { width, height } };
-// }
 
 function update(state: State<App>): State<App> {
   const updateStart = performance.now();

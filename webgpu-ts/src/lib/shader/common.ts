@@ -53,6 +53,16 @@ struct EntityBounds {
   max: vec3f,
 }
 
+struct EntityCamera {
+  projection: mat4x4f,
+}
+
+// https://webgpufundamentals.org/webgpu/lessons/resources/wgsl-offset-computer.html#x=5d00000100dd00000000000000003d888b0237284d03d2258bce8be1af0081f03468f71776d4f392dc8bbd6cd143999bf4dd0f91fddc27e2753a969cf2d1e7764689a02c360879c9afadb6944dc74b8a669db147dc0c253a853bfda987cf11dcfc91330ec5a8d05029fe5d8baff6d07ada04a37e76a7281dd19819f3cbdcfa432afb47fa3dbb57dd77c94151ed34a396876771c40f7528e31e140315f5beffff90748000
+struct View {
+  view_projection: mat4x4f,
+  inverse_view_projection: mat4x4f,
+}
+
 // https://webgpufundamentals.org/webgpu/lessons/resources/wgsl-offset-computer.html#x=5d000001004d01000000000000003d888b0237284d03d2258bce8be1af0081f03468f71776d4f392dc8bbd6c7df5a77636059cbd59ca89d90298a2affa7bbb460db73fa63d127887492c476bab67adb081c499e0c7046f903582183cf8e7ee1ff95b36d085887fc6d1033f3ec46a18aa67fc6eba83dc31bd7846a04ee2f6ac6351705ec665fa1ccb7ccdc26daa727b5a0ccba882301f795528dfee2236c88275939f0139633a9e2d3774070c4361b7e1d4f2a61dfff148bcbc
 struct MeshesIndicesLOD {
   offset: u32,

@@ -1,5 +1,5 @@
 import { mat4, type Mat4, type Mat4Arg } from "wgpu-matrix";
-import type { EntityName } from "./entities";
+import type { EntityId, EntityName } from "./entities";
 import { GPUPool } from "./gpu/pool";
 import { UINT16_MAX } from "./stdlib";
 
@@ -9,6 +9,7 @@ export interface Camera {
 }
 export type CameraRef = {
   id: CameraId;
+  entity: EntityName;
   projection: Mat4;
 };
 
@@ -54,6 +55,7 @@ export class Cameras {
     if (ref === undefined) {
       ref = {
         id: this.pool.allocate(),
+        entity: name,
         projection: mat4.copy(camera.projection),
       };
     } else {

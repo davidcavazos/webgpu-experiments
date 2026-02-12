@@ -3,8 +3,8 @@ import { GPUPool } from "./gpu/pool";
 import type { MeshId, MeshName, MeshRef } from "./meshes";
 import { UINT16_MAX, UINT32_MAX } from "./stdlib";
 import type { MaterialName } from "./materials";
-import { Cameras, type Camera, type CameraId } from "./cameras";
-import type { LightId } from "./lights";
+import { Cameras, type Camera, type CameraId, type CameraRef } from "./cameras";
+import type { LightId, LightRef } from "./lights";
 
 export const FLAGS_SLEEP = 1 << 0;
 export const FLAGS_OPAQUE = 1 << 1;
@@ -33,8 +33,8 @@ export type EntityRef = {
   name: EntityName;
   mesh?: MeshName;
   material?: MaterialName;
-  camera?: CameraId;
-  light?: LightId;
+  camera?: CameraRef;
+  light?: LightRef;
   opaque?: boolean;
 };
 

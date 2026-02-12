@@ -20,8 +20,10 @@ export interface State<a> {
 export async function start<a>(args: {
   canvas: HTMLCanvasElement;
   init: (device: GPUDevice) => Promise<InitState<a>>;
+  resize?: (state: State<a>, width: number, height: number) => void;
   update?: (state: State<a>) => State<a>;
 }) {
+  const resize = args.resize ?? (() => { });
   const update = args.update ?? (s => s);
 
   // Get the GPU device
@@ -77,18 +79,6 @@ export async function start<a>(args: {
   // Handle window resize.
   // https://webgpufundamentals.org/webgpu/lessons/webgpu-resizing-the-canvas.html
   const observer = new ResizeObserver((entries) => {
-    // Multiple cameras can be for:
-    // - Different angles on a cinematic
-    // - Local multi-player
-    // - Render on texture
-    // - Environment maps
-    // Maybe just having a hardcoded main camera to begin with
-    // - The camera must be placed on the scene graph
-    // - It should be able to be a child of an entity (like the player)
-    // - Maybe camera should contain (projection, canvas) or some sort of (width, height)
-    // - Maybe some reference to the canvas?
-    // The canvas should contain the camera projection and camera entity ID
-    // - The entity should contain the view transform
     for (const entry of entries) {
       const width =
         entry.devicePixelContentBoxSize?.[0]?.inlineSize ||
@@ -102,12 +92,8 @@ export async function start<a>(args: {
       const maxTextureDimension2D = device.limits.maxTextureDimension2D;
       renderer.canvas.width = Math.max(1, Math.min(width, maxTextureDimension2D));
       renderer.canvas.height = Math.max(1, Math.min(height, maxTextureDimension2D));
-      // renderer.camera.projection = resize(
-      //   renderer.camera.projection,
-      //   args.canvas.width,
-      //   args.canvas.height,
-      // );
-      // renderer.updateCameraViewProjection();
+      renderer.resizeViewports();
+      resize(state, renderer.canvas.width, renderer.canvas.height);
       // renderer.depthTexture.destroy();
       // renderer.depthTexture = renderer.createDepthTexture(
       //   args.canvas.width,

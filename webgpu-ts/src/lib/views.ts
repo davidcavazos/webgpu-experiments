@@ -7,7 +7,7 @@ export type ViewId = number;
 export class Views {
   static readonly MAX_CAPACITY = UINT8_MAX;
   static readonly ENTITIES = { size: 4 }; // u32
-  static readonly PARAMETERS = {
+  static readonly VIEW = {
     size: 128,
     view: (data: ArrayBuffer) => ({
       view_projection: new Float32Array(data, 0, 16),
@@ -18,7 +18,7 @@ export class Views {
   device: GPUDevice;
   capacity: number;
   entities: GPUPool;
-  parameters: GPUBuffer;
+  buffer: GPUBuffer;
   pinned: EntityId[];
 
   constructor(device: GPUDevice, args?: {
@@ -37,9 +37,9 @@ export class Views {
         usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
       }),
     });
-    this.parameters = this.device.createBuffer({
-      label: 'views_parameters',
-      size: this.capacity * Views.PARAMETERS.size,
+    this.buffer = this.device.createBuffer({
+      label: 'views',
+      size: this.capacity * Views.VIEW.size,
       usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
     });
     this.pinned = [];
@@ -50,16 +50,16 @@ export class Views {
     this.pinned = [];
   }
 
-  writeParameters(viewId: ViewId, params: {
+  write(viewId: ViewId, args: {
     view_projection: Mat4Arg;
   }) {
     if (viewId >= this.capacity) {
       throw new Error(`View ID ${viewId} exceeds capacity ${this.capacity}`);
     }
-    const data = new ArrayBuffer(Views.PARAMETERS.size);
-    const view = Views.PARAMETERS.view(data);
-    view.view_projection.set(params.view_projection);
-    view.inverse_view_projection.set(mat4.inverse(params.view_projection));
-    this.device.queue.writeBuffer(this.parameters, viewId * Views.PARAMETERS.size, data);
+    const data = new ArrayBuffer(Views.VIEW.size);
+    const view = Views.VIEW.view(data);
+    view.view_projection.set(args.view_projection);
+    view.inverse_view_projection.set(mat4.inverse(args.view_projection));
+    this.device.queue.writeBuffer(this.buffer, viewId * Views.VIEW.size, data);
   }
 }

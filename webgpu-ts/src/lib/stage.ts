@@ -1,4 +1,5 @@
-import { Cameras } from "./cameras";
+import { mat4, type Mat4 } from "wgpu-matrix";
+import { Cameras, type CameraRef } from "./cameras";
 import { Entities, type Entity, type EntityId, type EntityName, type EntityRef } from "./entities";
 import type { Material, MaterialName } from "./materials";
 import { Meshes, type Mesh, type MeshName, type MeshRef } from "./meshes";
@@ -7,10 +8,9 @@ import { UINT32_MAX } from "./stdlib";
 import { Views } from "./views";
 
 export interface Viewport {
-  x?: number;
-  y?: number;
-  width?: number;
-  height?: number;
+  min?: { x?: number; y?: number; };
+  max?: { x?: number; y?: number; };
+  projection: (width: number, height: number) => Mat4;
 }
 
 export class Stage {
@@ -19,7 +19,7 @@ export class Stage {
   entities: Entities;
   meshes: Meshes;
   views: Views;
-  viewports: Map<EntityId, Viewport>;
+  viewports: Map<CameraRef, Viewport>;
 
   constructor(device: GPUDevice, args?: {
     entities?: {
@@ -64,9 +64,17 @@ export class Stage {
 
   setViewport(ref: EntityRef, viewport: Viewport) {
     if (ref.camera === undefined) {
-      // this.entities.
+      ref.camera = this.entities.cameras.set(ref.name, {
+        projection: mat4.identity(),
+      });
     }
-    this.viewports.set(ref.id, viewport);
+    this.viewports.set(ref.camera, viewport);
+  }
+  resizeViewports(width: number, height: number) {
+    for (const [camera, viewport] of this.viewports) {
+      camera.projection = viewport.projection(width, height);
+      this.entities.cameras.set(camera.entity, camera);
+    }
   }
 
   find(name: EntityName): EntityRef | undefined {
