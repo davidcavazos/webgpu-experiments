@@ -1,3 +1,4 @@
+export const UINT8_MAX = 0xFF;
 export const UINT16_MAX = 0xFFFF;
 export const INT16_MAX = 0x7FFF;
 export const UINT32_MAX = 0xFFFFFFFF;
