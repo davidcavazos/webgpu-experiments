@@ -1,14 +1,32 @@
-import { quat, vec3 } from "wgpu-matrix";
+import { quat, vec3, type QuatArg, type Vec3Arg } from "wgpu-matrix";
 import { GPUPool } from "./gpu/pool";
 import type { MeshId } from "./meshes";
-import type { Entity, MeshName } from "./scene";
+import type { MeshName } from "./scene";
 import { UINT16_MAX, UINT32_MAX } from "./stdlib";
+import type { MaterialName } from "./materials";
 
 export const FLAGS_SLEEP /* */ = 1 << 0;
 export const FLAGS_OPAQUE /**/ = 1 << 1;
 
+export type Transform = {
+  position?: Vec3Arg;
+  rotation?: QuatArg;
+  scale?: number;
+};
+
 export type EntityId = number;
 export type EntityName = string;
+export interface Entity {
+  name: EntityName;
+  parentId?: EntityId;
+  transform?: Transform;
+  mesh?: MeshName;
+  material?: MaterialName;
+  camera?: EntityId;
+  light?: EntityId;
+  children?: Record<EntityName, Entity>;
+  opaque?: boolean;
+}
 export type EntityRef = {
   id: EntityId;
   name: EntityName;

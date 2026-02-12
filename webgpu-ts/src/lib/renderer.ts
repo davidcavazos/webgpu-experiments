@@ -77,7 +77,7 @@ export class Renderer {
 
   draw<a>(state: State<a>) {
     const current = state.frameNumber % 2;
-    const next = (state.frameNumber + 1) % 2;
+    const prev = Number(!current);
 
     this.stage.writeGlobals();
     const encoder = this.device.createCommandEncoder();

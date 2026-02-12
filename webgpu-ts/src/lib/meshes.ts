@@ -1,9 +1,24 @@
-import { vec3, type Vec3, type Vec3Arg } from "wgpu-matrix";
-import { INT16_MAX, mb, UINT16_MAX, UINT32_MAX } from "./stdlib";
-import { GPUHeap, type GPUHeapSlot } from "./gpu/heap";
+import { vec3, type Vec2Arg, type Vec3, type Vec3Arg } from "wgpu-matrix";
+import { mb, UINT16_MAX } from "./stdlib";
+import { GPUHeap } from "./gpu/heap";
 import { GPUPool } from "./gpu/pool";
-import type { Geometry, Mesh, MeshName } from "./scene";
 
+export interface Vertex {
+  position: Vec3Arg;
+  normal: Vec3Arg;
+  uv: Vec2Arg;
+}
+export type Index = number;
+
+export interface Geometry {
+  vertices: Vertex[];
+  indices: {
+    lod0: Index[];
+    lod1?: Index[];
+    lod2?: Index[];
+    lod3?: Index[];
+  };
+};
 export interface GeometryRef {
   baseVertex: number;
   lod0: { firstIndex: number, indexCount: number; },
@@ -13,6 +28,14 @@ export interface GeometryRef {
 }
 
 export type MeshId = number;
+export type MeshName = string;
+export interface Mesh {
+  loader: () => Promise<Geometry>;
+  bounds: {
+    min: Vec3Arg;
+    max: Vec3Arg;
+  };
+}
 export interface MeshBounds {
   min: Vec3;
   max: Vec3;

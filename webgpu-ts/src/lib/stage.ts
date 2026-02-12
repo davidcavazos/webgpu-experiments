@@ -1,6 +1,7 @@
-import { Entities, type EntityId, type EntityRef } from "./entities";
-import { Meshes, type MeshId, type MeshRef } from "./meshes";
-import type { Entity, EntityName, Material, MaterialName, Mesh, MeshName, Scene } from "./scene";
+import { Entities, type Entity, type EntityId, type EntityName, type EntityRef } from "./entities";
+import type { Material, MaterialName } from "./materials";
+import { Meshes, type Mesh, type MeshName, type MeshRef } from "./meshes";
+import type { Scene } from "./scene";
 import { UINT32_MAX } from "./stdlib";
 import { Views } from "./views";
 
@@ -53,6 +54,14 @@ export class Stage {
   clear() {
     this.entities.clear();
     this.meshes.clear();
+  }
+
+  setViewport(name: EntityName, viewport: Viewport) {
+    const entity = this.entities.get(name);
+    if (!entity) {
+      throw new Error(`Entity ${name} not found`);
+    }
+    this.viewports.set(entity.id, viewport);
   }
 
   find(name: EntityName): EntityRef | undefined {
