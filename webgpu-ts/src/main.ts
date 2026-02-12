@@ -82,7 +82,10 @@ async function init(device: GPUDevice): Promise<StateInit<App>> {
   stage.load(scene);
 
   const camera = stage.find("skp_camera_Last_Saved_SketchUp_View");
-  console.log(camera);
+  stage.viewports.set(camera?.id ?? UINT32_MAX, {
+    width: canvas.width,
+    height: canvas.height,
+  });
 
   // TODO: do not load geometry here, stream as needed by cpu_feedback
   for (const name of stage.meshes.entries.keys()) {

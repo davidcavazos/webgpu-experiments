@@ -1,7 +1,9 @@
+import { mat4, type Mat4Arg } from "wgpu-matrix";
 import type { EntityId } from "./entities";
 import { GPUPool } from "./gpu/pool";
 import { UINT8_MAX } from "./stdlib";
 
+export type ViewId = number;
 export class Views {
   static readonly MAX_CAPACITY = UINT8_MAX;
   static readonly ENTITIES = { size: 4 }; // u32
@@ -41,5 +43,23 @@ export class Views {
       usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
     });
     this.pinned = [];
+  }
+
+  clear() {
+    this.entities.clear();
+    this.pinned = [];
+  }
+
+  writeParameters(viewId: ViewId, params: {
+    view_projection: Mat4Arg;
+  }) {
+    if (viewId >= this.capacity) {
+      throw new Error(`View ID ${viewId} exceeds capacity ${this.capacity}`);
+    }
+    const data = new ArrayBuffer(Views.PARAMETERS.size);
+    const view = Views.PARAMETERS.view(data);
+    view.view_projection.set(params.view_projection);
+    view.inverse_view_projection.set(mat4.inverse(params.view_projection));
+    this.device.queue.writeBuffer(this.parameters, viewId * Views.PARAMETERS.size, data);
   }
 }

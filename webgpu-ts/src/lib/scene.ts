@@ -15,6 +15,8 @@ export interface Entity {
   transform?: Transform;
   mesh?: MeshName;
   material?: MaterialName;
+  camera?: EntityId;
+  light?: EntityId;
   children?: Record<EntityName, Entity>;
   opaque?: boolean;
 }

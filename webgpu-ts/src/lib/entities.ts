@@ -41,6 +41,13 @@ export class Entities {
       material_id: new Uint32Array(data, 0, 1),
     })
   };
+  static readonly VIEW = {
+    size: 8,
+    view: (data: ArrayBuffer) => ({
+      camera_id: new Uint32Array(data, 0, 1),
+      light_id: new Uint32Array(data, 4, 1),
+    })
+  };
   static readonly SUBSCRIPTIONS = {
     size: 4,
     view: (data: ArrayBuffer) => ({
@@ -56,6 +63,7 @@ export class Entities {
   world_B: GPUBuffer;
   mesh: GPUBuffer;
   material: GPUBuffer;
+  view: GPUBuffer;
   subscriptions: GPUBuffer;
 
   constructor(device: GPUDevice, args?: { capacity?: number; }) {
@@ -88,6 +96,11 @@ export class Entities {
     this.material = this.device.createBuffer({
       label: 'entities_material',
       size: this.capacity * Entities.MATERIAL.size,
+      usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
+    });
+    this.view = this.device.createBuffer({
+      label: 'entities_view',
+      size: this.capacity * Entities.VIEW.size,
       usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
     });
     this.subscriptions = this.device.createBuffer({
