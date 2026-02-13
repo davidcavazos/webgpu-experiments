@@ -17,19 +17,20 @@ export class Stage {
   device: GPUDevice;
   globals: GPUBuffer;
   entities: Entities;
-  meshes: Meshes;
   views: Views;
   viewports: Map<CameraRef, Viewport>;
 
   constructor(device: GPUDevice, args?: {
     entities?: {
       capacity?: number,
-      camerasCapacity?: number,
+      meshes?: {
+        capacity?: number,
+        heapSize?: number,
+      };
+      cameras?: {
+        capacity?: number,
+      };
     },
-    meshes?: {
-      capacity?: number,
-      heapSize?: number,
-    };
     views?: {
       capacity?: number,
     };
@@ -43,14 +44,7 @@ export class Stage {
       size: 12,
       usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
     });
-    this.entities = new Entities(this.device, {
-      capacity: args?.entities?.capacity,
-      camerasCapacity: args?.entities?.camerasCapacity,
-    });
-    this.meshes = new Meshes(this.device, {
-      capacity: args?.meshes?.capacity,
-      heapSize: args?.meshes?.heapSize,
-    });
+    this.entities = new Entities(this.device, args?.entities);
     this.views = new Views(this.device, {
       capacity: args?.views?.capacity,
     });
@@ -59,7 +53,8 @@ export class Stage {
 
   clear() {
     this.entities.clear();
-    this.meshes.clear();
+    this.views.clear();
+    this.viewports.clear();
   }
 
   setViewport(ref: EntityRef, viewport: Viewport) {
@@ -93,43 +88,7 @@ export class Stage {
   }
 
   load(scene: Scene) {
-    for (const [name, mesh] of Object.entries(scene.meshes)) {
-      this.loadMesh(name, mesh);
-    }
-    for (const [name, material] of Object.entries(scene.materials)) {
-      this.loadMaterial(name, material);
-    }
-    // Load entities after meshes and materials, they're needed.
-    for (const [name, entity] of Object.entries(scene.entities)) {
-      this.loadEntity(name, entity);
-    }
-  }
-
-  loadEntity(name: EntityName, entity: Entity): EntityRef {
-    const ref = this.entities.add(name);
-    this.entities.setLocal(ref, entity);
-    if (entity.mesh) {
-      const meshRef = this.meshes.get(entity.mesh);
-      if (meshRef === undefined) {
-        throw new Error(`Mesh ${entity.mesh} not found for entity ${name}`);
-      }
-      this.entities.setMesh(ref, meshRef);
-    }
-    for (const [childName, child] of Object.entries(entity.children ?? {})) {
-      this.loadEntity(`${name}/${childName}`, { ...child, parentId: ref.id });
-    }
-    return ref;
-  }
-
-  loadMesh(name: MeshName, mesh: Mesh): MeshRef {
-    const ref = this.meshes.add(name, mesh);
-    this.meshes.writeBaseVertex(ref.id, UINT32_MAX);
-    this.meshes.writeBounds(ref.id, ref.bounds);
-    return ref;
-  }
-
-  loadMaterial(name: MaterialName, material: Material) {
-    // console.log(name, material);
+    return this.entities.load(scene);
   }
 
   writeGlobals() {

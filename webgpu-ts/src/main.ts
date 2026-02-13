@@ -26,11 +26,11 @@ async function init(device: GPUDevice): Promise<StateInit<App>> {
   const stage = new Stage(device);
 
   const meshes_pool_cap_mb = (
-    stage.meshes.base_vertex.buffer.size +
-    stage.meshes.lods.size +
-    stage.meshes.bounds.size
+    stage.entities.meshes.base_vertex.buffer.size +
+    stage.entities.meshes.lods.size +
+    stage.entities.meshes.bounds.size
   ) / 1024 / 1024;
-  const meshes_heap_cap_mb = stage.meshes.geometry.buffer.size / 1024 / 1024;
+  const meshes_heap_cap_mb = stage.entities.meshes.geometry.buffer.size / 1024 / 1024;
   const entities_pool_cap_mb = (
     stage.entities.local.buffer.size +
     stage.entities.world_A.size +
@@ -45,7 +45,7 @@ async function init(device: GPUDevice): Promise<StateInit<App>> {
     entities_pool_cap_mb + entities_cameras_cap_mb
   );
   console.log(`--- Memory allocated (${allocated_total_mb.toFixed(2)} MiB) ---`);
-  console.log(` meshes.pool: ${meshes_pool_cap_mb.toFixed(2)} MiB (${stage.meshes.capacity} capacity)`);
+  console.log(` meshes.pool: ${meshes_pool_cap_mb.toFixed(2)} MiB (${stage.entities.meshes.capacity} capacity)`);
   console.log(` meshes.heap: ${meshes_heap_cap_mb.toFixed(2)} MiB`);
   console.log(` entities.pool: ${entities_pool_cap_mb.toFixed(2)} MiB (${stage.entities.capacity} capacity)`);
   console.log(` entities.cameras: ${entities_cameras_cap_mb.toFixed(2)} MiB`);
@@ -92,14 +92,14 @@ async function init(device: GPUDevice): Promise<StateInit<App>> {
   });
 
   // TODO: do not load geometry here, stream as needed by cpu_feedback
-  for (const name of stage.meshes.entries.keys()) {
-    await stage.meshes.loadGeometry(name);
+  for (const name of stage.entities.meshes.entries.keys()) {
+    await stage.entities.meshes.loadGeometry(name);
   }
 
-  const meshes_heap_use_mb = stage.meshes.geometry.size_used() / 1024 / 1024;
-  const entities_heap_use_mb = 0 / 1024 / 1024;
+  const meshes_heap_use_mb = stage.entities.meshes.geometry.size_used() / 1024 / 1024;
+  const entities_heap_use_mb = stage.entities.meshes.geometry.size_used() / 1024 / 1024;
   console.log('--- Memory used ---');
-  console.log(` meshes.pool: ${(stage.meshes.entries.size / stage.meshes.capacity * 100).toFixed(1)}% (${stage.meshes.entries.size} count)`);
+  console.log(` meshes.pool: ${(stage.entities.meshes.entries.size / stage.entities.meshes.capacity * 100).toFixed(1)}% (${stage.entities.meshes.entries.size} count)`);
   console.log(` meshes.heap: ${(meshes_heap_use_mb / meshes_heap_cap_mb * 100).toFixed(1)}% (${meshes_heap_use_mb.toFixed(2)} MiB)`);
   console.log(` entities.pool: ${(stage.entities.entries.size / stage.entities.capacity * 100).toFixed(2)}% (${stage.entities.entries.size} count)`);
   console.log(` entities.heap: ${(entities_heap_use_mb / entities_cameras_cap_mb * 100).toFixed(1)}% (${entities_heap_use_mb.toFixed(2)} MiB)`);

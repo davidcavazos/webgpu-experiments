@@ -97,14 +97,14 @@ export class Renderer {
       }],
     });
     pass.setPipeline(this.opaque);
-    pass.setVertexBuffer(0, this.stage.meshes.geometry.buffer);
-    pass.setIndexBuffer(this.stage.meshes.geometry.buffer, Meshes.GEOMETRY_INDEX.format);
+    pass.setVertexBuffer(0, this.stage.entities.meshes.geometry.buffer);
+    pass.setIndexBuffer(this.stage.entities.meshes.geometry.buffer, Meshes.GEOMETRY_INDEX.format);
     // TODO: replace loop with render bundle.
     for (const ref of this.stage.entities) {
       if (ref.mesh === undefined) {
         continue;
       }
-      const mesh = this.stage.meshes.entries.get(ref.mesh);
+      const mesh = this.stage.entities.meshes.entries.get(ref.mesh);
       if (mesh?.geometry === undefined) {
         continue;
       }

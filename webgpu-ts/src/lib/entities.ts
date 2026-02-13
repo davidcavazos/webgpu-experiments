@@ -1,10 +1,11 @@
 import { quat, vec3, type QuatArg, type Vec3Arg } from "wgpu-matrix";
 import { GPUPool } from "./gpu/pool";
-import type { MeshId, MeshName, MeshRef } from "./meshes";
+import { Meshes, type Mesh, type MeshId, type MeshName, type MeshRef } from "./meshes";
 import { UINT16_MAX, UINT32_MAX } from "./stdlib";
-import type { MaterialName } from "./materials";
+import type { Material, MaterialName } from "./materials";
 import { Cameras, type Camera, type CameraId, type CameraRef } from "./cameras";
-import type { LightId, LightRef } from "./lights";
+import type { Light, LightId, LightRef } from "./lights";
+import type { Scene } from "./scene";
 
 export const FLAGS_SLEEP = 1 << 0;
 export const FLAGS_OPAQUE = 1 << 1;
@@ -23,8 +24,8 @@ export interface Entity {
   transform?: Transform;
   mesh?: MeshName;
   material?: MaterialName;
-  camera?: CameraId;
-  light?: LightId;
+  camera?: Camera;
+  light?: Light;
   children?: Record<EntityName, Entity>;
   opaque?: boolean;
 }
@@ -87,11 +88,18 @@ export class Entities {
   material: GPUBuffer;
   view: GPUBuffer;
   subscriptions: GPUBuffer;
+  meshes: Meshes;
   cameras: Cameras;
 
   constructor(device: GPUDevice, args?: {
     capacity?: number;
-    camerasCapacity?: number;
+    meshes?: {
+      capacity?: number;
+      heapSize?: number;
+    };
+    cameras?: {
+      capacity?: number;
+    };
   }) {
     this.device = device;
     this.capacity = args?.capacity ?? 1000000;
@@ -134,9 +142,8 @@ export class Entities {
       size: this.capacity * Entities.SUBSCRIPTIONS.size,
       usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
     });
-    this.cameras = new Cameras(this.device, {
-      capacity: args?.camerasCapacity,
-    });
+    this.meshes = new Meshes(this.device, args?.meshes);
+    this.cameras = new Cameras(this.device, args?.cameras);
   }
 
   *[Symbol.iterator](): IterableIterator<EntityRef> {
@@ -165,13 +172,16 @@ export class Entities {
     this.entries.set(name, ref);
   }
 
-  add(name: EntityName): EntityRef {
+  add(name: EntityName, entity: Entity): EntityRef {
     let ref = this.entries.get(name);
-    if (ref !== undefined) {
-      return ref;
+    if (ref === undefined) {
+      ref = { id: this.local.allocate(), name };
     }
     const id = this.local.allocate();
     this.entries.set(name, { id, name });
+    this.setLocal(ref, entity);
+    this.setMesh(ref, entity.mesh);
+    this.setCamera(ref, entity.camera);
     return { id, name };
   }
 
@@ -192,9 +202,20 @@ export class Entities {
     this.local.write(id, data);
   }
 
-  setMesh(ref: EntityRef, mesh: MeshRef | undefined) {
-    this.entries.set(ref.name, { ...ref, mesh: mesh?.name });
-    this.writeMesh(ref.id, mesh?.id);
+  setMesh(ref: EntityRef, meshName: MeshName | undefined) {
+    let meshId: MeshId | undefined = undefined;
+    if (meshName === undefined) {
+      ref.mesh = undefined;
+    } else {
+      const meshRef = this.meshes.get(meshName);
+      if (meshRef === undefined) {
+        throw new Error(`Mesh ${meshName} not found for entity ${ref.name}`);
+      }
+      ref.mesh = meshName;
+      meshId = meshRef.id;
+    }
+    this.entries.set(ref.name, ref);
+    this.writeMesh(ref.id, meshId);
   }
   writeMesh(id: EntityId, meshId: MeshId | undefined) {
     const data = new ArrayBuffer(Entities.MESH.size);
@@ -205,9 +226,16 @@ export class Entities {
 
   // TODO: setMaterial
 
-  setCamera(ref: EntityRef, camera: Camera) {
-    const cameraRef = this.cameras.set(ref.name, camera);
-    this.writeCamera(ref.id, cameraRef.id);
+  setCamera(ref: EntityRef, camera: Camera | undefined) {
+    let cameraId: CameraId | undefined = undefined;
+    if (camera === undefined) {
+      ref.camera = undefined;
+    } else {
+      ref.camera = this.cameras.set(ref.name, camera);
+      cameraId = ref.camera.id;
+    }
+    this.entries.set(ref.name, ref);
+    this.writeCamera(ref.id, cameraId);
   }
   writeCamera(id: EntityId, cameraId: CameraId | undefined) {
     const data = new ArrayBuffer(Entities.VIEW.size);
@@ -217,4 +245,34 @@ export class Entities {
   }
 
   // TODO: setSubscription
+
+  load(scene: Scene) {
+    for (const [name, mesh] of Object.entries(scene.meshes)) {
+      this.loadMesh(name, mesh);
+    }
+    for (const [name, material] of Object.entries(scene.materials)) {
+      this.loadMaterial(name, material);
+    }
+    // Load entities after meshes and materials, they're needed.
+    for (const [name, entity] of Object.entries(scene.entities)) {
+      this.loadEntity(name, entity);
+    }
+  }
+  loadEntity(name: EntityName, entity: Entity): EntityRef {
+    const ref = this.add(name, entity);
+    for (const [childName, child] of Object.entries(entity.children ?? {})) {
+      this.loadEntity(`${name}/${childName}`, { ...child, parentId: ref.id });
+    }
+    return ref;
+  }
+  loadMesh(name: MeshName, mesh: Mesh): MeshRef {
+    const ref = this.meshes.add(name, mesh);
+    this.meshes.writeBaseVertex(ref.id, UINT32_MAX);
+    this.meshes.writeBounds(ref.id, ref.bounds);
+    return ref;
+  }
+  loadMaterial(name: MaterialName, material: Material) {
+    // console.log(name, material);
+  }
+
 }

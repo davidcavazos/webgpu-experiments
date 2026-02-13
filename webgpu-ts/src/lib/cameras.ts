@@ -16,9 +16,9 @@ export type CameraRef = {
 export class Cameras {
   static readonly MAX_CAPACITY = UINT16_MAX;
   static readonly CAMERA = {
-    size: 4,
+    size: 64,
     view: (data: ArrayBuffer) => ({
-      camera_id: new Uint16Array(data, 0, 1),
+      projection: new Float32Array(data, 0, 16),
     })
   };
 
@@ -50,7 +50,7 @@ export class Cameras {
     return this.entries.get(name);
   }
 
-  set(name: EntityName, camera: Camera) {
+  set(name: EntityName, camera: Camera): CameraRef {
     let ref = this.entries.get(name);
     if (ref === undefined) {
       ref = {
@@ -69,7 +69,7 @@ export class Cameras {
   write(ref: CameraRef) {
     const data = new ArrayBuffer(Cameras.CAMERA.size);
     const view = Cameras.CAMERA.view(data);
-    view.camera_id[0] = ref.id;
+    view.projection.set(ref.projection);
     this.pool.write(ref.id, data);
   }
 }
