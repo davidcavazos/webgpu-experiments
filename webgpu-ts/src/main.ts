@@ -87,9 +87,10 @@ async function init(device: GPUDevice): Promise<StateInit<App>> {
       100, // fieldOfView
       width / height, // aspect
       1, // zNear
-      1000, // zFar
+      10000, // zFar
     ),
   });
+  console.log(scene);
 
   // TODO: do not load geometry here, stream as needed by cpu_feedback
   for (const name of stage.entities.meshes.entries.keys()) {

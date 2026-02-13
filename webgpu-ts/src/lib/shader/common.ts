@@ -75,6 +75,14 @@ struct MeshesIndices {
   lod3: MeshesIndicesLOD,
 }
 
+fn entity_world_matrix(entity: EntityWorld) -> mat4x4f {
+  return transform_matrix(
+    entity.position,
+    Quat(entity.rotation),
+    entity.scale,
+  );
+}
+
 fn transform_matrix(pos: vec3f, rotation: Quat, scale: f32) -> mat4x4f {
   // https://github.com/greggman/wgpu-matrix/blob/31963458dcafa4cf430d981afd9b31bc5eba55e3/src/mat4-impl.ts#L193
   let x = rotation.x;

@@ -38,7 +38,7 @@ export class Views {
   capacity: number;
   entries: Map<EntityName, ViewRef>;
   entities: GPUPool;
-  views: GPUBuffer;
+  buffer: GPUBuffer;
 
   constructor(device: GPUDevice, args?: {
     capacity?: number,
@@ -57,7 +57,7 @@ export class Views {
         usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
       }),
     });
-    this.views = this.device.createBuffer({
+    this.buffer = this.device.createBuffer({
       label: 'views',
       size: this.capacity * Views.VIEW.size,
       usage: GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST,
@@ -105,6 +105,6 @@ export class Views {
     if (DEBUG.WRITE_BUFFER.ALL || DEBUG.WRITE_BUFFER.VIEWS) {
       console.log('writeView', ref, view);
     }
-    this.device.queue.writeBuffer(this.views, ref.id * Views.VIEW.size, data);
+    this.device.queue.writeBuffer(this.buffer, ref.id * Views.VIEW.size, data);
   }
 }

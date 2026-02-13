@@ -11,8 +11,9 @@ export interface DrawCmd {
 
 const BIND = {
   globals: 0,
-  instances: 1,
-  entities_world: 2,
+  views: 1,
+  instances: 2,
+  entities_world: 3,
 };
 
 export class RenderColor {
@@ -30,6 +31,7 @@ export class RenderColor {
     vertex_buffer: GPUBuffer;
     index_buffer: GPUBuffer;
     globals: GPUBuffer;
+    views: GPUBuffer;
     instances: GPUBuffer;
     entities_world_A: GPUBuffer;
     entities_world_B: GPUBuffer;
@@ -46,6 +48,7 @@ export class RenderColor {
       label: args.label,
       entries: [
         { binding: BIND.globals, buffer: { type: 'uniform' }, visibility: GPUShaderStage.VERTEX },
+        { binding: BIND.views, buffer: { type: 'read-only-storage' }, visibility: GPUShaderStage.VERTEX },
         { binding: BIND.instances, buffer: { type: 'read-only-storage' }, visibility: GPUShaderStage.VERTEX },
         { binding: BIND.entities_world, buffer: { type: 'read-only-storage' }, visibility: GPUShaderStage.VERTEX },
       ],
@@ -56,6 +59,7 @@ export class RenderColor {
         layout: this.bindGroupLayout,
         entries: [
           { binding: BIND.globals, resource: args.globals },
+          { binding: BIND.views, resource: args.views },
           { binding: BIND.instances, resource: args.instances },
           { binding: BIND.entities_world, resource: args.entities_world_A },
         ],
@@ -65,6 +69,7 @@ export class RenderColor {
         layout: this.bindGroupLayout,
         entries: [
           { binding: BIND.globals, resource: args.globals },
+          { binding: BIND.views, resource: args.views },
           { binding: BIND.instances, resource: args.instances },
           { binding: BIND.entities_world, resource: args.entities_world_B },
         ],
@@ -111,7 +116,7 @@ export class RenderColor {
         view: args.textureView,
         loadOp: 'clear',
         storeOp: 'store',
-        clearValue: { r: 0, g: 0, b: 0, a: 1 },
+        clearValue: [0.208, 0.220, 0.224, 1], // onyx #353839,
       }],
     });
     pass.setPipeline(this.pipeline);
@@ -138,6 +143,7 @@ const defaultCode = /* wgsl */`
 ${shaderCommon}
 
 @group(0) @binding(${BIND.globals}) var<uniform> globals: Globals;
+@group(0) @binding(${BIND.views}) var<storage, read> views: array<View>;
 @group(0) @binding(${BIND.instances}) var<storage, read> instances: array<EntityId>;
 @group(0) @binding(${BIND.entities_world}) var<storage, read> entities_world: array<EntityWorld>;
 
@@ -152,6 +158,7 @@ struct VertexInput {
 struct VertexOutput {
   @builtin(position) position: vec4f,
   @location(0) normal: vec3f,
+  @location(1) color: vec4f,
 };
 
 @vertex fn opaque_vertex(
@@ -160,27 +167,25 @@ struct VertexOutput {
   input: VertexInput
 ) -> VertexOutput {
   let entity_id = instances[instance_id];
-  // let entity_index = instances[instance_id];
-  // let entity_world = entities_world[entity_index];
-  // let position = entity_world.position_scale.xyz;
-  // let scale = entity_world.position_scale.w;
-  // let rotation = entity_world.rotation;
-  // let world_matrix = transform_matrix(position, rotation, scale);
+  let entity_world = entities_world[entity_id];
+  let world_matrix = entity_world_matrix(entity_world);
+  let view_projection = views[0].view_projection;
+  // let triangle: array<vec4f, 3> = array(
+  //   vec4f(-0.5, -0.5, 0, 1),
+  //   vec4f(0.5, -0.5, 0, 1),
+  //   vec4f(0, 0.5, 0, 1),
+  // );
   var output: VertexOutput;
-  // output.position = camera.view_projection * world_matrix * vec4f(input.position, 1.0);
-  var pos = array<vec2f, 3>(
-    vec2f(0.0, 0.5),
-    vec2f(-0.5, -0.5),
-    vec2f(0.5, -0.5)
-  );
-
-  output.position = vec4f(pos[vertex_id % 3], 0.0, 1.0);
+  output.position = view_projection * world_matrix * vec4f(input.position, 1.0);
+  // output.position = triangle[vertex_id];
   output.normal = vec3f(input.normal);
+  // output.color = vec4f(abs(view_projection[0][0]) - 2, 0, 0, 1);
   return output;
 }
 
 @fragment fn opaque_fragment(input: VertexOutput) -> @location(0) vec4f {
   return vec4f(input.normal * 0.5 + 0.5, 1);
+  // return input.color;
 }
 
 `;

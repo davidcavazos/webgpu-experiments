@@ -1,3 +1,11 @@
+const DEBUG = {
+  WRITE_BUFFER: {
+    ALL: false,
+    INSTANCES: false,
+    DRAW_CMDS: false,
+  },
+};
+
 export interface DrawCmd {
   indexCount: number;
   instanceCount: number;

@@ -3,6 +3,16 @@ import { mb, UINT16_MAX } from "./stdlib";
 import { GPUHeap } from "./gpu/heap";
 import { GPUPool } from "./gpu/pool";
 
+const DEBUG = {
+  WRITE_BUFFER: {
+    ALL: false,
+    VERTICES: false,
+    LODS: false,
+    BOUNDS: false,
+    GEOMETRY: false,
+  },
+};
+
 export interface Vertex {
   position: Vec3Arg;
   normal: Vec3Arg;
@@ -196,6 +206,9 @@ export class Meshes {
       ref.lod2.firstIndex, ref.lod2.indexCount,
       ref.lod3.firstIndex, ref.lod3.indexCount,
     ]);
+    if (DEBUG.WRITE_BUFFER.ALL || DEBUG.WRITE_BUFFER.LODS) {
+      console.log('lods', id, ref, data);
+    }
     this.device.queue.writeBuffer(this.lods, id * data.byteLength, data);
   }
 
@@ -205,6 +218,9 @@ export class Meshes {
     view.min.set(bounds.min);
     view.max.set(bounds.max);
     view.scale.set([bounds.scale]);
+    if (DEBUG.WRITE_BUFFER.ALL || DEBUG.WRITE_BUFFER.BOUNDS) {
+      console.log('bounds', id, bounds, view);
+    }
     this.device.queue.writeBuffer(this.bounds, id * data.byteLength, data);
   }
 
@@ -226,7 +242,9 @@ export class Meshes {
     };
 
     const size = sizes.vertices + sizes.lod0 + sizes.lod1 + sizes.lod2 + sizes.lod3;
-    const slot = this.geometry.alloc(size);
+    const alginMask = Meshes.GEOMETRY_VERTEX.size - 1;
+    const alignedSize = (size + alginMask) & ~alginMask;
+    const slot = this.geometry.alloc(alignedSize);
 
     const vertexData = new ArrayBuffer(sizes.vertices);
     for (const [i, v] of geometry.vertices.entries()) {
@@ -238,9 +256,9 @@ export class Meshes {
     this.geometry.write(slot.offset, vertexData);
 
     const lod0 = { offset: slot.offset + sizes.vertices, count: counts.lod0 };
-    const lod1 = counts.lod1 == 0 ? lod0 : { offset: lod0.offset + sizes.lod0, count: counts.lod1 };
-    const lod2 = counts.lod2 == 0 ? lod1 : { offset: lod1.offset + sizes.lod1, count: counts.lod2 };
-    const lod3 = counts.lod3 == 0 ? lod2 : { offset: lod2.offset + sizes.lod2, count: counts.lod3 };
+    const lod1 = counts.lod1 === 0 ? lod0 : { offset: lod0.offset + sizes.lod0, count: counts.lod1 };
+    const lod2 = counts.lod2 === 0 ? lod1 : { offset: lod1.offset + sizes.lod1, count: counts.lod2 };
+    const lod3 = counts.lod3 === 0 ? lod2 : { offset: lod2.offset + sizes.lod2, count: counts.lod3 };
 
     const indexData = new Uint32Array(geometry.indices.lod0);
     this.geometry.write(lod0.offset, indexData.buffer);
@@ -258,7 +276,7 @@ export class Meshes {
     }
 
     return {
-      baseVertex: slot.offset,
+      baseVertex: slot.offset / Meshes.GEOMETRY_VERTEX.size,
       lod0: { firstIndex: lod0.offset / Meshes.GEOMETRY_INDEX.size, indexCount: lod0.count },
       lod1: { firstIndex: lod1.offset / Meshes.GEOMETRY_INDEX.size, indexCount: lod1.count },
       lod2: { firstIndex: lod2.offset / Meshes.GEOMETRY_INDEX.size, indexCount: lod2.count },
