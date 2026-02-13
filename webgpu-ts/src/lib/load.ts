@@ -1,11 +1,10 @@
 import * as THREE from "three";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
-import type { Stage } from "./stage";
-import { Transform } from "./transform";
-import type { EntityId } from "./entities";
-import type { Entity, EntityName, Geometry, Material, MaterialName, Mesh, MeshName, Scene, Vertex } from "./scene";
 import { vec3 } from "wgpu-matrix";
-import { isObjectEmpty } from "./stdlib";
+import type { Scene } from "./scene";
+import type { Entity, EntityName } from "./entities";
+import type { Geometry, Mesh, MeshName, Vertex } from "./meshes";
+import type { Material, MaterialName } from "./materials";
 
 export async function load(url: string): Promise<Scene> {
   const loader = new GLTFLoader();
@@ -73,7 +72,7 @@ function toMesh(node: THREE.Mesh): [MeshName, Mesh] {
       uv: [uv.getX(i), uv.getY(i)],
     })),
     indices: {
-      lod0: [...index?.array ?? []],
+      lod0: [...index?.array ?? []].reverse(),
     }
   };
   const bounds = { min: vec3.create(), max: vec3.create() };

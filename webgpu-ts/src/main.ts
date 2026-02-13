@@ -84,7 +84,7 @@ async function init(device: GPUDevice): Promise<StateInit<App>> {
   }
   stage.setViewport(camera, {
     projection: (width, height) => mat4.perspective(
-      100, // fieldOfView
+      90 * (Math.PI / 180), // fieldOfView
       width / height, // aspect
       1, // zNear
       10000, // zFar
