@@ -104,7 +104,7 @@ export class RenderColor {
       },
       depthStencil: {
         depthWriteEnabled: true,
-        depthCompare: 'less',
+        depthCompare: 'greater', // reverse z-buffer
         format: 'depth32float',
       }
     });
@@ -126,7 +126,7 @@ export class RenderColor {
       }],
       depthStencilAttachment: {
         view: args.depthTexture,
-        depthClearValue: 1.0,
+        depthClearValue: 0.0, // reverse z-buffer
         depthLoadOp: 'clear',
         depthStoreOp: 'store',
       }
@@ -170,7 +170,6 @@ struct VertexInput {
 struct VertexOutput {
   @builtin(position) position: vec4f,
   @location(0) normal: vec3f,
-  @location(1) color: vec4f,
 };
 
 @vertex fn opaque_vertex(
@@ -182,22 +181,14 @@ struct VertexOutput {
   let entity_world = entities_world[entity_id];
   let world_matrix = entity_world_matrix(entity_world);
   let view_projection = views[0].view_projection;
-  // let triangle: array<vec4f, 3> = array(
-  //   vec4f(-0.5, -0.5, 0, 1),
-  //   vec4f(0.5, -0.5, 0, 1),
-  //   vec4f(0, 0.5, 0, 1),
-  // );
   var output: VertexOutput;
   output.position = view_projection * world_matrix * vec4f(input.position, 1.0);
-  // output.position = triangle[vertex_id];
   output.normal = vec3f(input.normal);
-  // output.color = vec4f(abs(view_projection[0][0]) - 2, 0, 0, 1);
   return output;
 }
 
 @fragment fn opaque_fragment(input: VertexOutput) -> @location(0) vec4f {
   return vec4f(input.normal * 0.5 + 0.5, 1);
-  // return input.color;
 }
 
 `;
