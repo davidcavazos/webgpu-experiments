@@ -14,6 +14,13 @@ export interface Viewport {
 }
 
 export class Stage {
+  static readonly GLOBALS = {
+    size: 12,
+    view: (data: ArrayBuffer) => ({
+      entities_size: new Uint32Array(data, 0, 1),
+    }),
+  };
+
   device: GPUDevice;
   globals: GPUBuffer;
   entities: Entities;
@@ -93,9 +100,8 @@ export class Stage {
 
   writeGlobals() {
     const data = new ArrayBuffer(this.globals.size);
-    new Uint32Array(data, 0).set([
-      this.entities.size(), // entities_size
-    ]);
+    const view = Stage.GLOBALS.view(data);
+    view.entities_size.set([this.entities.size()]);
     this.device.queue.writeBuffer(this.globals, 0, data);
   }
 }

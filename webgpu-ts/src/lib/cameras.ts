@@ -3,6 +3,10 @@ import type { EntityId, EntityName } from "./entities";
 import { GPUPool } from "./gpu/pool";
 import { UINT16_MAX } from "./stdlib";
 
+const DEBUG = {
+  WRITE_BUFFER: false,
+};
+
 export type CameraId = number;
 export interface Camera {
   projection: Mat4Arg;
@@ -62,14 +66,17 @@ export class Cameras {
       ref.projection = mat4.copy(camera.projection);
     }
     this.entries.set(name, ref);
-    this.write(ref);
+    this.writeCamera(ref);
     return ref;
   }
 
-  write(ref: CameraRef) {
+  writeCamera(ref: CameraRef) {
     const data = new ArrayBuffer(Cameras.CAMERA.size);
     const view = Cameras.CAMERA.view(data);
     view.projection.set(ref.projection);
+    if (DEBUG.WRITE_BUFFER) {
+      console.log('writeCamera', ref, view);
+    }
     this.pool.write(ref.id, data);
   }
 }

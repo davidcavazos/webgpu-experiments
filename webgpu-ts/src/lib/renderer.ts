@@ -1,8 +1,10 @@
+import { mat4 } from "wgpu-matrix";
 import { Meshes } from "./meshes";
 import { Flatten } from "./passes/flatten";
 import { shaderCommon } from "./shader/common";
 import type { Stage } from "./stage";
 import type { State } from "./start";
+import { RenderColor, type DrawCmd } from "./renderColor";
 
 export class Renderer {
   device: GPUDevice;
@@ -11,8 +13,8 @@ export class Renderer {
   stage: Stage;
   pass: {
     flatten: Flatten;
+    opaque: RenderColor;
   };
-  opaque: GPURenderPipeline;
 
   constructor(device: GPUDevice, args: {
     canvas: HTMLCanvasElement;
@@ -38,41 +40,14 @@ export class Renderer {
         entities_local: this.stage.entities.local.buffer,
         entities_world_A: this.stage.entities.world_A,
         entities_world_B: this.stage.entities.world_B,
-      })
-    };
-    const renderModule = this.device.createShaderModule({
-      code: renderCode,
-    });
-    // TODO: make opaque into its own class, into this.pass.
-    this.opaque = this.device.createRenderPipeline({
-      label: 'opaque',
-      layout: this.device.createPipelineLayout({
-        label: 'opaque',
-        bindGroupLayouts: [
-        ],
       }),
-      vertex: {
-        module: renderModule,
-        entryPoint: 'opaque_vertex',
-        buffers: [
-          {
-            arrayStride: Meshes.GEOMETRY_VERTEX.size,
-            attributes: Meshes.GEOMETRY_VERTEX.attributes,
-          },
-        ],
-      },
-      fragment: {
-        module: renderModule,
-        entryPoint: 'opaque_fragment',
-        targets: [{
-          format: this.context.getCurrentTexture().format,
-        }],
-      },
-      primitive: {
-        topology: 'triangle-list',
-        cullMode: 'back',
-      },
-    });
+      opaque: new RenderColor(this.device, {
+        label: 'opaque',
+        textureFormat: this.context.getCurrentTexture().format,
+        vertex_buffer: this.stage.entities.meshes.geometry.buffer,
+        index_buffer: this.stage.entities.meshes.geometry.buffer,
+      }),
+    };
   };
 
   draw<a>(state: State<a>) {
@@ -82,24 +57,28 @@ export class Renderer {
     this.stage.writeGlobals();
     const encoder = this.device.createCommandEncoder();
     this.pass.flatten.dispatch(encoder, this.stage.entities.size(), current);
-    this.renderOpaque(encoder);
+
+    // TODO: this should all be done in compute passes.
+    const draws = this.TODO();
+
+    this.pass.opaque.draw({
+      encoder,
+      textureView: this.context.getCurrentTexture().createView(),
+      draws,
+    });
     this.device.queue.submit([encoder.finish()]);
   }
 
-  renderOpaque(encoder: GPUCommandEncoder) {
-    const pass = encoder.beginRenderPass({
-      label: 'opaque',
-      colorAttachments: [{
-        view: this.context.getCurrentTexture().createView(),
-        loadOp: 'clear',
-        storeOp: 'store',
-        clearValue: { r: 0, g: 0, b: 0, a: 1 },
-      }],
-    });
-    pass.setPipeline(this.opaque);
-    pass.setVertexBuffer(0, this.stage.entities.meshes.geometry.buffer);
-    pass.setIndexBuffer(this.stage.entities.meshes.geometry.buffer, Meshes.GEOMETRY_INDEX.format);
-    // TODO: replace loop with render bundle.
+  TODO(): DrawCmd[] {
+    for (const [camera, viewport] of this.stage.viewports) {
+      // TODO: multiply projection by view matrix.
+      // - The transform is on the GPU only, so must be done in shader pass.
+      this.stage.views.set(camera.entity, {
+        view_projection: camera.projection,
+        pinned: true,
+      });
+    }
+    const draws: DrawCmd[] = [];
     for (const ref of this.stage.entities) {
       if (ref.mesh === undefined) {
         continue;
@@ -108,15 +87,15 @@ export class Renderer {
       if (mesh?.geometry === undefined) {
         continue;
       }
-      pass.drawIndexed(
-        mesh.geometry.lod0.indexCount,
-        1, //instanceCount
-        mesh.geometry.lod0.firstIndex,
-        mesh.geometry.baseVertex,
-        0, // firstInstance
-      );
+      draws.push({
+        indexCount: mesh.geometry.lod0.indexCount,
+        instanceCount: 1,
+        firstIndex: mesh.geometry.lod0.firstIndex,
+        baseVertex: mesh.geometry.baseVertex,
+        firstInstance: 0,
+      });
     }
-    pass.end();
+    return draws;
   }
 
   resizeViewports() {
@@ -128,9 +107,9 @@ const renderCode = /* wgsl */`
 
 ${shaderCommon}
 
-// @group(0) @binding(0) var<uniform> camera: Camera;
-// @group(0) @binding(1) var<storage, read> entities_world: array<EntityWorld>;
-// @group(0) @binding(2) var<storage, read> instances: array<EntityId>;
+@group(0) @binding(0) var<uniform> globals: Globals;
+@group(0) @binding(1) var<storage, read> entities_world: array<EntityWorld>;
+@group(0) @binding(2) var<storage, read> instances: array<EntityId>;
 
 // https://webgpufundamentals.org/webgpu/lessons/resources/wgsl-offset-computer.html#x=5d000001000a01000000000000003d888b0237284d03d2258bce8be1af0081f03468f71776d4f392dc8bbd6cd12bb77ae4df8a541430a62ceaa7a28e236f1ecf27ebbf8baf2dd0c87683f1d45382f492f7500ab40c37e99189de5f8fe963927340abfab3fea597fad52ec74c368723453ef9d30836947c5209e7ce1a9aaadc03120146d64a47c2f2f2ea6b578b302df1b6361dfd53388c2551c8b4e826d59d166017ae06c9e339f2ae3f598c9e81da7cba7edac13d280f5fff0f011a00
 struct VertexInput {
@@ -150,6 +129,7 @@ struct VertexOutput {
   @builtin(instance_index) instance_id: u32,
   input: VertexInput
 ) -> VertexOutput {
+  // let entity_id = instances[instance_id];
   // let entity_index = instances[instance_id];
   // let entity_world = entities_world[entity_index];
   // let position = entity_world.position_scale.xyz;

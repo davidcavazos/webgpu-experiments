@@ -3,6 +3,14 @@ import { GPUPool } from "./gpu/pool";
 import { UINT8_MAX } from "./stdlib";
 import type { EntityName } from "./entities";
 
+const DEBUG = {
+  WRITE_BUFFER: {
+    ALL: false,
+    ENTITIES: false,
+    VIEWS: false,
+  },
+};
+
 export type ViewId = number;
 export interface View {
   view_projection: Mat4;
@@ -14,7 +22,6 @@ export interface ViewRef {
   view_projection: Mat4;
   pinned: boolean;
 }
-
 
 export class Views {
   static readonly MAX_CAPACITY = UINT8_MAX;
@@ -77,15 +84,27 @@ export class Views {
       ref.pinned = view.pinned ?? false;
     }
     this.entries.set(name, ref);
-    this.write(ref);
+    this.writeEntity(ref);
+    this.writeView(ref);
     return ref;
   }
 
-  write(ref: ViewRef) {
+  writeEntity(ref: ViewRef) {
+    const data = new Uint32Array([ref.id]);
+    if (DEBUG.WRITE_BUFFER.ALL || DEBUG.WRITE_BUFFER.ENTITIES) {
+      console.log('writeEntity', ref.id, data);
+    }
+    this.device.queue.writeBuffer(this.entities.buffer, ref.id * data.byteLength, data);
+  }
+
+  writeView(ref: ViewRef) {
     const data = new ArrayBuffer(Views.VIEW.size);
     const view = Views.VIEW.view(data);
     view.view_projection.set(ref.view_projection);
     view.inverse_view_projection.set(mat4.inverse(ref.view_projection));
+    if (DEBUG.WRITE_BUFFER.ALL || DEBUG.WRITE_BUFFER.VIEWS) {
+      console.log('writeView', ref, view);
+    }
     this.device.queue.writeBuffer(this.views, ref.id * Views.VIEW.size, data);
   }
 }

@@ -7,6 +7,15 @@ import { Cameras, type Camera, type CameraId, type CameraRef } from "./cameras";
 import type { Light, LightId, LightRef } from "./lights";
 import type { Scene } from "./scene";
 
+const DEBUG = {
+  WRITE_BUFFER: {
+    ALL: false,
+    LOCAL: false,
+    MESH: false,
+    VIEW: false,
+  },
+};
+
 export const FLAGS_SLEEP = 1 << 0;
 export const FLAGS_OPAQUE = 1 << 1;
 
@@ -199,6 +208,9 @@ export class Entities {
     view.flags.set([0
       | (entity.opaque ? FLAGS_OPAQUE : 0),
     ]);
+    if (DEBUG.WRITE_BUFFER.ALL || DEBUG.WRITE_BUFFER.LOCAL) {
+      console.log(`writeLocal ${id}`, entity, view);
+    }
     this.local.write(id, data);
   }
 
@@ -221,6 +233,9 @@ export class Entities {
     const data = new ArrayBuffer(Entities.MESH.size);
     const view = Entities.MESH.view(data);
     view.mesh_id.set([meshId ?? UINT16_MAX]);
+    if (DEBUG.WRITE_BUFFER.ALL || DEBUG.WRITE_BUFFER.MESH) {
+      console.log(`writeMesh ${id}`, meshId, view);
+    }
     this.device.queue.writeBuffer(this.mesh, id * data.byteLength, data);
   }
 
@@ -235,12 +250,15 @@ export class Entities {
       cameraId = ref.camera.id;
     }
     this.entries.set(ref.name, ref);
-    this.writeCamera(ref.id, cameraId);
+    this.writeView(ref.id, cameraId);
   }
-  writeCamera(id: EntityId, cameraId: CameraId | undefined) {
+  writeView(id: EntityId, cameraId: CameraId | undefined) {
     const data = new ArrayBuffer(Entities.VIEW.size);
     const view = Entities.VIEW.view(data);
     view.camera_id.set([cameraId ?? UINT16_MAX]);
+    if (DEBUG.WRITE_BUFFER.ALL || DEBUG.WRITE_BUFFER.VIEW) {
+      console.log(`writeCamera ${id}`, cameraId, view);
+    }
     this.device.queue.writeBuffer(this.view, id * data.byteLength, data);
   }
 
