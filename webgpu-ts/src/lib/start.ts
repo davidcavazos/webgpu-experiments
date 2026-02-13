@@ -96,9 +96,10 @@ export async function start<a>(args: {
         devicePixelRatio;
       //   const canvas: HTMLCanvasElement = entry.target;
       const maxTextureDimension2D = device.limits.maxTextureDimension2D;
-      renderer.canvas.width = Math.max(1, Math.min(width, maxTextureDimension2D));
-      renderer.canvas.height = Math.max(1, Math.min(height, maxTextureDimension2D));
-      renderer.resizeViewports();
+      renderer.resize({
+        width: Math.max(1, Math.min(width, maxTextureDimension2D)),
+        height: renderer.canvas.height = Math.max(1, Math.min(height, maxTextureDimension2D)),
+      });
       resize(state, renderer.canvas.width, renderer.canvas.height);
       // renderer.depthTexture.destroy();
       // renderer.depthTexture = renderer.createDepthTexture(

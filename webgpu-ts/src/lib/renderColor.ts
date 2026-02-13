@@ -102,22 +102,34 @@ export class RenderColor {
         topology: 'triangle-list',
         cullMode: 'back',
       },
+      depthStencil: {
+        depthWriteEnabled: true,
+        depthCompare: 'less',
+        format: 'depth32float',
+      }
     });
   }
 
   draw(encoder: GPUCommandEncoder, args: {
-    textureView: GPUTextureView;
+    renderTexture: GPUTexture | GPUTextureView;
+    depthTexture: GPUTexture | GPUTextureView;
     current: number;
     draws: DrawCmd[];
   }) {
     const pass = encoder.beginRenderPass({
       label: 'opaque',
       colorAttachments: [{
-        view: args.textureView,
+        view: args.renderTexture,
         loadOp: 'clear',
         storeOp: 'store',
         clearValue: [0.208, 0.220, 0.224, 1], // onyx #353839,
       }],
+      depthStencilAttachment: {
+        view: args.depthTexture,
+        depthClearValue: 1.0,
+        depthLoadOp: 'clear',
+        depthStoreOp: 'store',
+      }
     });
     pass.setPipeline(this.pipeline);
     pass.setVertexBuffer(0, this.vertex_buffer);

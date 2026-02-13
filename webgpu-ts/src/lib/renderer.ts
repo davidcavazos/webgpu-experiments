@@ -8,6 +8,7 @@ export class Renderer {
   device: GPUDevice;
   canvas: HTMLCanvasElement;
   context: GPUCanvasContext;
+  depthTexture: GPUTexture;
   stage: Stage;
   pass: {
     flatten: Flatten;
@@ -31,6 +32,7 @@ export class Renderer {
       alphaMode: "premultiplied",
     });
 
+    this.depthTexture = this.createDepthTexture();
     this.stage = args.stage;
     this.pass = {
       flatten: new Flatten(this.device, {
@@ -53,6 +55,16 @@ export class Renderer {
     };
   };
 
+  createDepthTexture(): GPUTexture {
+    return this.device.createTexture({
+      label: "depth_texture",
+      usage: GPUTextureUsage.RENDER_ATTACHMENT,
+      size: [this.canvas.width, this.canvas.height],
+      format: "depth32float",
+      sampleCount: 1,
+    });
+  }
+
   draw<a>(state: State<a>) {
     this.stage.writeGlobals();
     const encoder = this.device.createCommandEncoder();
@@ -62,7 +74,8 @@ export class Renderer {
     const draws = this.TODO();
 
     this.pass.opaque.draw(encoder, {
-      textureView: this.context.getCurrentTexture().createView(),
+      renderTexture: this.context.getCurrentTexture().createView(),
+      depthTexture: this.depthTexture,
       current: state.current,
       draws,
     });
@@ -107,7 +120,11 @@ export class Renderer {
     return draws;
   }
 
-  resizeViewports() {
+  resize(size: { width: number, height: number; }) {
+    this.canvas.width = size.width;
+    this.canvas.height = size.height;
     this.stage.resizeViewports(this.canvas.width, this.canvas.height);
+    this.depthTexture.destroy();
+    this.depthTexture = this.createDepthTexture();
   }
 }
