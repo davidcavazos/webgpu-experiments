@@ -46,24 +46,25 @@ export class Renderer {
         textureFormat: this.context.getCurrentTexture().format,
         vertex_buffer: this.stage.entities.meshes.geometry.buffer,
         index_buffer: this.stage.entities.meshes.geometry.buffer,
+        globals: this.stage.globals,
+        instances: this.stage.draws.instances,
+        entities_world_A: this.stage.entities.world_A,
+        entities_world_B: this.stage.entities.world_B,
       }),
     };
   };
 
   draw<a>(state: State<a>) {
-    const current = state.frameNumber % 2;
-    const prev = Number(!current);
-
     this.stage.writeGlobals();
     const encoder = this.device.createCommandEncoder();
-    this.pass.flatten.dispatch(encoder, this.stage.entities.size(), current);
+    this.pass.flatten.dispatch(encoder, this.stage.entities.size(), state.current);
 
     // TODO: this should all be done in compute passes.
     const draws = this.TODO();
 
-    this.pass.opaque.draw({
-      encoder,
+    this.pass.opaque.draw(encoder, {
       textureView: this.context.getCurrentTexture().createView(),
+      current: state.current,
       draws,
     });
     this.device.queue.submit([encoder.finish()]);

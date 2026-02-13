@@ -6,6 +6,7 @@ import { Meshes, type Mesh, type MeshName, type MeshRef } from "./meshes";
 import type { Scene } from "./scene";
 import { UINT32_MAX } from "./stdlib";
 import { Views } from "./views";
+import { Draws } from "./draws";
 
 export interface Viewport {
   min?: { x?: number; y?: number; };
@@ -24,6 +25,7 @@ export class Stage {
   device: GPUDevice;
   globals: GPUBuffer;
   entities: Entities;
+  draws: Draws;
   views: Views;
   viewports: Map<CameraRef, Viewport>;
 
@@ -38,6 +40,9 @@ export class Stage {
         capacity?: number,
       };
     },
+    draws?: {
+      capacity?: number;
+    };
     views?: {
       capacity?: number,
     };
@@ -52,6 +57,14 @@ export class Stage {
       usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
     });
     this.entities = new Entities(this.device, args?.entities);
+    this.draws = new Draws(this.device, {
+      instances: {
+        capacity: args?.entities?.capacity,
+      },
+      draw_cmds: {
+        capacity: args?.draws?.capacity,
+      },
+    });
     this.views = new Views(this.device, {
       capacity: args?.views?.capacity,
     });

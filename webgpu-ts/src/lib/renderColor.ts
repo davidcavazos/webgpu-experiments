@@ -9,9 +9,17 @@ export interface DrawCmd {
   firstInstance: number;
 }
 
+const BIND = {
+  globals: 0,
+  instances: 1,
+  entities_world: 2,
+};
+
 export class RenderColor {
   device: GPUDevice;
   module: GPUShaderModule;
+  bindGroupLayout: GPUBindGroupLayout;
+  bindGroup: [GPUBindGroup, GPUBindGroup];
   pipeline: GPURenderPipeline;
   vertex_buffer: GPUBuffer;
   index_buffer: GPUBuffer;
@@ -21,6 +29,10 @@ export class RenderColor {
     module?: GPUShaderModule;
     vertex_buffer: GPUBuffer;
     index_buffer: GPUBuffer;
+    globals: GPUBuffer;
+    instances: GPUBuffer;
+    entities_world_A: GPUBuffer;
+    entities_world_B: GPUBuffer;
     textureFormat: GPUTextureFormat;
   }) {
     this.device = device;
@@ -30,12 +42,39 @@ export class RenderColor {
       label: args.label,
       code: defaultCode,
     });
+    this.bindGroupLayout = this.device.createBindGroupLayout({
+      label: args.label,
+      entries: [
+        { binding: BIND.globals, buffer: { type: 'uniform' }, visibility: GPUShaderStage.VERTEX },
+        { binding: BIND.instances, buffer: { type: 'read-only-storage' }, visibility: GPUShaderStage.VERTEX },
+        { binding: BIND.entities_world, buffer: { type: 'read-only-storage' }, visibility: GPUShaderStage.VERTEX },
+      ],
+    });
+    this.bindGroup = [
+      this.device.createBindGroup({
+        label: `${args.label}_A`,
+        layout: this.bindGroupLayout,
+        entries: [
+          { binding: BIND.globals, resource: args.globals },
+          { binding: BIND.instances, resource: args.instances },
+          { binding: BIND.entities_world, resource: args.entities_world_A },
+        ],
+      }),
+      this.device.createBindGroup({
+        label: `${args.label}_B`,
+        layout: this.bindGroupLayout,
+        entries: [
+          { binding: BIND.globals, resource: args.globals },
+          { binding: BIND.instances, resource: args.instances },
+          { binding: BIND.entities_world, resource: args.entities_world_B },
+        ],
+      }),
+    ];
     this.pipeline = this.device.createRenderPipeline({
       label: args.label,
       layout: this.device.createPipelineLayout({
         label: args.label,
-        bindGroupLayouts: [
-        ],
+        bindGroupLayouts: [this.bindGroupLayout],
       }),
       vertex: {
         module: this.module,
@@ -61,12 +100,12 @@ export class RenderColor {
     });
   }
 
-  draw(args: {
-    encoder: GPUCommandEncoder;
+  draw(encoder: GPUCommandEncoder, args: {
     textureView: GPUTextureView;
+    current: number;
     draws: DrawCmd[];
   }) {
-    const pass = args.encoder.beginRenderPass({
+    const pass = encoder.beginRenderPass({
       label: 'opaque',
       colorAttachments: [{
         view: args.textureView,
@@ -78,6 +117,8 @@ export class RenderColor {
     pass.setPipeline(this.pipeline);
     pass.setVertexBuffer(0, this.vertex_buffer);
     pass.setIndexBuffer(this.index_buffer, Meshes.GEOMETRY_INDEX.format);
+    pass.setBindGroup(0, this.bindGroup[args.current]);
+    // TODO: drawIndexedIndirect with fixed render bundle (eg. 4096 draws, some with instanceCount=0).
     for (const draw of args.draws) {
       pass.drawIndexed(
         draw.indexCount,
@@ -91,13 +132,14 @@ export class RenderColor {
   }
 }
 
+// ---- START SHADER CODE ---- \\
 const defaultCode = /* wgsl */`
 
 ${shaderCommon}
 
-@group(0) @binding(0) var<uniform> globals: Globals;
-@group(0) @binding(1) var<storage, read> entities_world: array<EntityWorld>;
-@group(0) @binding(2) var<storage, read> instances: array<EntityId>;
+@group(0) @binding(${BIND.globals}) var<uniform> globals: Globals;
+@group(0) @binding(${BIND.instances}) var<storage, read> instances: array<EntityId>;
+@group(0) @binding(${BIND.entities_world}) var<storage, read> entities_world: array<EntityWorld>;
 
 // https://webgpufundamentals.org/webgpu/lessons/resources/wgsl-offset-computer.html#x=5d000001000a01000000000000003d888b0237284d03d2258bce8be1af0081f03468f71776d4f392dc8bbd6cd12bb77ae4df8a541430a62ceaa7a28e236f1ecf27ebbf8baf2dd0c87683f1d45382f492f7500ab40c37e99189de5f8fe963927340abfab3fea597fad52ec74c368723453ef9d30836947c5209e7ce1a9aaadc03120146d64a47c2f2f2ea6b578b302df1b6361dfd53388c2551c8b4e826d59d166017ae06c9e339f2ae3f598c9e81da7cba7edac13d280f5fff0f011a00
 struct VertexInput {
@@ -117,7 +159,7 @@ struct VertexOutput {
   @builtin(instance_index) instance_id: u32,
   input: VertexInput
 ) -> VertexOutput {
-  // let entity_id = instances[instance_id];
+  let entity_id = instances[instance_id];
   // let entity_index = instances[instance_id];
   // let entity_world = entities_world[entity_index];
   // let position = entity_world.position_scale.xyz;

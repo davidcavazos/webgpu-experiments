@@ -9,9 +9,11 @@ export interface InitState<a> {
 }
 
 export interface State<a> {
-  readonly frameNumber: number;
   readonly deltaTime: number;
   readonly now: number;
+  readonly frameNumber: number;
+  readonly current: number;
+  readonly prev: number;
   readonly stage: Stage;
   readonly renderer: Renderer;
   app: a;
@@ -52,9 +54,11 @@ export async function start<a>(args: {
     stage,
   });
   let state: State<a> = {
-    frameNumber: 0,
     deltaTime: 0,
     now: performance.now(),
+    frameNumber: 0,
+    current: 0,
+    prev: 1,
     stage,
     renderer,
     app,
@@ -70,6 +74,8 @@ export async function start<a>(args: {
       deltaTime: now - state.now,
       now,
       frameNumber: state.frameNumber + 1,
+      current: Number(!state.current),
+      prev: state.current,
     };
     state = update(state);
     requestAnimationFrame(render);
