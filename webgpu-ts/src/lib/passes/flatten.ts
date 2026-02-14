@@ -63,11 +63,14 @@ export class Flatten {
     });
   }
 
-  dispatch(encoder: GPUCommandEncoder, entities_size: number, current: number) {
+  dispatch(encoder: GPUCommandEncoder, args: {
+    entities_size: number,
+    current: number,
+  }) {
     const pass = encoder.beginComputePass({ label: this.label });
     pass.setPipeline(this.pipeline);
-    pass.setBindGroup(0, this.bindGroup[current]);
-    pass.dispatchWorkgroups(Math.ceil(entities_size / WORKGROUP_SIZE));
+    pass.setBindGroup(0, this.bindGroup[args.current]);
+    pass.dispatchWorkgroups(Math.ceil(args.entities_size / WORKGROUP_SIZE));
     pass.end();
   }
 }

@@ -55,7 +55,7 @@ export class Entities {
     view: (data: ArrayBuffer) => ({
       position: new Float32Array(data, 0, 3),
       scale: new Float32Array(data, 12, 1),
-      rotation: new Uint16Array(data, 16, 4),
+      rotation: new Float16Array(data, 16, 4),
       parent_id: new Uint32Array(data, 24, 1),
       flags: new Uint32Array(data, 28, 1),
     })
@@ -181,17 +181,13 @@ export class Entities {
     this.entries.set(name, ref);
   }
 
-  add(name: EntityName, entity: Entity): EntityRef {
-    let ref = this.entries.get(name);
-    if (ref === undefined) {
-      ref = { id: this.local.allocate(), name };
-    }
-    const id = this.local.allocate();
-    this.entries.set(name, { id, name });
-    this.setLocal(ref, entity);
-    this.setMesh(ref, entity.mesh);
-    this.setCamera(ref, entity.camera);
-    return { id, name };
+  add(name: EntityName): EntityRef {
+    const ref: EntityRef = {
+      id: this.entries.get(name)?.id ?? this.local.allocate(),
+      name,
+    };
+    this.entries.set(name, ref);
+    return ref;
   }
 
   setLocal(ref: EntityRef, entity: Entity) {
@@ -214,20 +210,19 @@ export class Entities {
     this.local.write(id, data);
   }
 
-  setMesh(ref: EntityRef, meshName: MeshName | undefined) {
-    let meshId: MeshId | undefined = undefined;
-    if (meshName === undefined) {
-      ref.mesh = undefined;
-    } else {
-      const meshRef = this.meshes.get(meshName);
-      if (meshRef === undefined) {
-        throw new Error(`Mesh ${meshName} not found for entity ${ref.name}`);
-      }
-      ref.mesh = meshName;
-      meshId = meshRef.id;
+  setMesh(ref: EntityRef, meshName: MeshName) {
+    const meshRef = this.meshes.get(meshName);
+    if (meshRef === undefined) {
+      throw new Error(`Mesh ${meshName} not found for entity ${ref.name}`);
     }
+    ref.mesh = meshRef.name;
     this.entries.set(ref.name, ref);
-    this.writeMesh(ref.id, meshId);
+    this.writeMesh(ref.id, meshRef.id);
+  }
+  unsetMesh(ref: EntityRef) {
+    ref.mesh = undefined;
+    this.entries.set(ref.name, ref);
+    this.writeMesh(ref.id, undefined);
   }
   writeMesh(id: EntityId, meshId: MeshId | undefined) {
     const data = new ArrayBuffer(Entities.MESH.size);
@@ -241,23 +236,23 @@ export class Entities {
 
   // TODO: setMaterial
 
-  setCamera(ref: EntityRef, camera: Camera | undefined) {
-    let cameraId: CameraId | undefined = undefined;
-    if (camera === undefined) {
-      ref.camera = undefined;
-    } else {
-      ref.camera = this.cameras.set(ref.name, camera);
-      cameraId = ref.camera.id;
-    }
+  setCamera(ref: EntityRef, camera: Camera): CameraRef {
+    ref.camera = this.cameras.set(ref.name, camera);
     this.entries.set(ref.name, ref);
-    this.writeView(ref.id, cameraId);
+    this.writeView(ref.id, ref.camera?.id);
+    return ref.camera;
+  }
+  unsetCamera(ref: EntityRef) {
+    ref.camera = undefined;
+    this.entries.set(ref.name, ref);
+    this.writeView(ref.id, undefined);
   }
   writeView(id: EntityId, cameraId: CameraId | undefined) {
     const data = new ArrayBuffer(Entities.VIEW.size);
     const view = Entities.VIEW.view(data);
     view.camera_id.set([cameraId ?? UINT16_MAX]);
     if (DEBUG.WRITE_BUFFER.ALL || DEBUG.WRITE_BUFFER.VIEW) {
-      console.log(`writeCamera ${id}`, cameraId, view);
+      console.log(`writeView ${id}`, cameraId ?? UINT16_MAX, view);
     }
     this.device.queue.writeBuffer(this.view, id * data.byteLength, data);
   }
@@ -277,7 +272,18 @@ export class Entities {
     }
   }
   loadEntity(name: EntityName, entity: Entity): EntityRef {
-    const ref = this.add(name, entity);
+    const ref = this.add(name);
+    this.setLocal(ref, entity);
+    if (entity.mesh) {
+      this.setMesh(ref, entity.mesh);
+    } else {
+      this.unsetMesh(ref);
+    }
+    if (entity.camera) {
+      this.setCamera(ref, entity.camera);
+    } else {
+      this.unsetCamera(ref);
+    }
     for (const [childName, child] of Object.entries(entity.children ?? {})) {
       this.loadEntity(`${name}/${childName}`, { ...child, parentId: ref.id });
     }

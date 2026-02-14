@@ -16,9 +16,12 @@ export interface Viewport {
 
 export class Stage {
   static readonly GLOBALS = {
-    size: 12,
+    size: 16,
     view: (data: ArrayBuffer) => ({
-      entities_size: new Uint32Array(data, 0, 1),
+      screen_width: new Uint32Array(data, 0, 1),
+      screen_height: new Uint32Array(data, 4, 1),
+      entities_size: new Uint32Array(data, 8, 1),
+      views_size: new Uint32Array(data, 12, 1),
     }),
   };
 
@@ -53,7 +56,7 @@ export class Stage {
     this.device = device;
     this.globals = this.device.createBuffer({
       label: 'globals',
-      size: 12,
+      size: Stage.GLOBALS.size,
       usage: GPUBufferUsage.UNIFORM | GPUBufferUsage.COPY_DST,
     });
     this.entities = new Entities(this.device, args?.entities);
@@ -79,11 +82,11 @@ export class Stage {
 
   setViewport(ref: EntityRef, viewport: Viewport) {
     if (ref.camera === undefined) {
-      ref.camera = this.entities.cameras.set(ref.name, {
-        projection: mat4.identity(),
-      });
+      ref.camera = this.entities.setCamera(ref, { projection: mat4.identity() });
+      this.entities.set(ref.name, ref);
     }
     this.viewports.set(ref.camera, viewport);
+    this.views.add(ref);
   }
   resizeViewports(width: number, height: number) {
     for (const [camera, viewport] of this.viewports) {
@@ -111,10 +114,16 @@ export class Stage {
     return this.entities.load(scene);
   }
 
-  writeGlobals() {
-    const data = new ArrayBuffer(this.globals.size);
+  writeGlobals(args: {
+    screen_width: number,
+    screen_height: number,
+  }) {
+    const data = new ArrayBuffer(Stage.GLOBALS.size);
     const view = Stage.GLOBALS.view(data);
-    view.entities_size.set([this.entities.size()]);
+    view.screen_width.set([args.screen_width]);
+    view.screen_height.set([args.screen_height]);
+    view.entities_size.set([this.entities.local.size]);
+    view.views_size.set([this.views.pool.size]);
     this.device.queue.writeBuffer(this.globals, 0, data);
   }
 }

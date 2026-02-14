@@ -6,8 +6,12 @@ enable f16;
 
 alias Quat = vec4f;
 
+// https://webgpufundamentals.org/webgpu/lessons/resources/wgsl-offset-computer.html#x=5d00000100f700000000000000003d888b0237284d03d2258bce8be1af0081f03468f71776d4f392dc8bbd6c47d3f389f3ccfa9c33006aae80cea0d2fd8376339cf467d9da971fc8d7c75653a9163db1b3dbc81e0eeefb00845d0a9860bc2a2fca28dacbf3d89808339f6fac09c552d6fd50deef0f26b0f9bfffef836c68a9b43c0a95dc80d0568da7c7d080a6bd07c830bc495a5847b8380f07dd3ced349f27d6487aa51e2f2f284aa45fff26236000
 struct Globals {
+  screen_width: u32,
+  screen_height: u32,
   entities_size: u32,
+  views_size: u32,
 };
 
 // // TODO: optimize packing to 16 bytes
@@ -46,31 +50,36 @@ struct EntityWorld {
   flags: u32,
 };
 
-// https://webgpufundamentals.org/webgpu/lessons/resources/wgsl-offset-computer.html#x=5d00000100d000000000000000003d888b0237284d03d2258bce8be1af0081f03468f71776d4f392dc8bbd6c35c7a3a1cbc4075a9de2f64eed23c38f74bcd087f2fd447185f21e3b9f3e6cf38930abc114ae8e1352e1cf62d16adf6b59aa46b8e65bf8d8be12e1fe0c64302987163da012947df65c503899810408370d765930d973bf24c6f90743ab68a3c40b962cca6f889b9e9f22894aed5ba6afb7f1a2d0ffff6ccc0000
-struct EntityBounds {
-  min: vec3f,
-  scale: f32,
-  max: vec3f,
-}
+// https://webgpufundamentals.org/webgpu/lessons/resources/wgsl-offset-computer.html#x=5d00000100c700000000000000003d888b0237284d03d2258bce8be1af0081f03468f71776d4f392dc8bbd6c35c7a3a1cbc68ea323870d4d1d6661765deb8c399f71a6665991d6cd6a28ff9716d76c67e0484d9dbcf26790927c5fbcebb1ac3c892c2df40435feaebe9d2675aecffd417fce7345adcb08c2664761e1940246aab7a1b55cd6a4ec75b3affa4734e3510a600af30712835f397772017ffe25c700
+struct EntityView {
+  camera_id: u32,
+  light_id: u32,
+};
 
-struct EntityCamera {
+// // https://webgpufundamentals.org/webgpu/lessons/resources/wgsl-offset-computer.html#x=5d00000100d000000000000000003d888b0237284d03d2258bce8be1af0081f03468f71776d4f392dc8bbd6c35c7a3a1cbc4075a9de2f64eed23c38f74bcd087f2fd447185f21e3b9f3e6cf38930abc114ae8e1352e1cf62d16adf6b59aa46b8e65bf8d8be12e1fe0c64302987163da012947df65c503899810408370d765930d973bf24c6f90743ab68a3c40b962cca6f889b9e9f22894aed5ba6afb7f1a2d0ffff6ccc0000
+// struct EntityBounds {
+//   min: vec3f,
+//   scale: f32,
+//   max: vec3f,
+// }
+
+struct Camera {
   projection: mat4x4f,
 }
 
-// https://webgpufundamentals.org/webgpu/lessons/resources/wgsl-offset-computer.html#x=5d000001000402000000000000003d888b0237284d03d2258bce8be1af0081f03468f71776d4f392dc8bbd6cd143999bf4dd0f91fde00ad47aeeaeea2897560809be7a93fa762a6dbddf51c00db0890c9560a18d24942aefbbc515575afc1f6a3ffe2fdcd86c6f38ceff95431cd4cd26a8f450ef02e025ea179242c90a65ee78c4fd83ded7bc9d8251aa64092e68a4873d665778660e15b07849b76f92aecdaed6a43fe6f8ed664ab6c8ee076ca5a59689a4a5ff4c2303db85e14a4cf5c324fbe96ee4acd25aedcda63fcfbf566483c3cdbc03a3eb3b4ff7e5ea5a9dd8c47e2e0958dfd1a2f54fe0834453377263943dc3bf2e09f7b002bb6f5967014d632e8663f8e20392b6f315850d31f5d5a47198176b3a1affe8530d97f36a4d4d1638afd3d10a91803362b0b77709c2e6209e634ca464544c3f2b8e4bca954d2d3db318ef94489bc9d61944d334bec9eaa4e03045dab115d1a3ff67d95500
+// https://webgpufundamentals.org/webgpu/lessons/resources/wgsl-offset-computer.html#x=5d00000100f101000000000000003d888b0237284d03d2258bce8be1af0081f03468f71776d4f392dc8bbd6cd143999bf4dd0f91fde00ad47aeeaeea2897560809be7a93fa762a6dbddf51c00db0890c9560a18d24942aefbbc515575afc1f6a3ffe2fdcd86c6f38ceff95431cd4cd26a8f450ef02e025ea179242c90a65ee78c4fd83ded7bc9d8251aa64092e68a4873d665778660e15b07849b76f92aecdaed6a43fe6f8ed664ab6c8ee076ca5a59689a4a5ff4c2303db85e14a4ef8a0a5f67346059ff9eef381da506ff3c9b99e67b1af669878f3e3cee92b9f72a4d9b83b76bc82d10e13e10200ecf7c78a424305940b32c93cefc617369457d7472054f600615458b617504909a6a5449d54cf28c5b553a1597ede015150d1c4148ac85887ac342ba34ec1c19cc89f3efa709bdfd88c66e1fbc30b02e587196130cfeab10a44593cf57d5683a44025c5916087bfffee8ee2f2
+// size_px = bounds_radius * size_culling_k / distance
 struct View {
   entity_id: u32,
   _pack_lod_flags: u32, // lod: u16, flags: u16
   direction: vec3<f16>,
   shadow_bias: f16,
   world_position: vec3f,
-  size_culling_k: f32, // 0.5 * viewport_height / tan(fov * 0.5)
-  // size_px = bounds_radius * size_culling_k / distance
-  frustum: array<vec4f, 6>,
+  size_culling_k: f32, // 0.5 * viewport_height / tan(0.5 * fov)
+  frustum: array<vec4f, 6>, // left, right, bottom, top, near, far
   view_projection: mat4x4f,
   inverse_view_projection: mat4x4f,
 }
-
 
 // https://webgpufundamentals.org/webgpu/lessons/resources/wgsl-offset-computer.html#x=5d000001004d01000000000000003d888b0237284d03d2258bce8be1af0081f03468f71776d4f392dc8bbd6c7df5a77636059cbd59ca89d90298a2affa7bbb460db73fa63d127887492c476bab67adb081c499e0c7046f903582183cf8e7ee1ff95b36d085887fc6d1033f3ec46a18aa67fc6eba83dc31bd7846a04ee2f6ac6351705ec665fa1ccb7ccdc26daa727b5a0ccba882301f795528dfee2236c88275939f0139633a9e2d3774070c4361b7e1d4f2a61dfff148bcbc
 struct MeshesIndicesLOD {
@@ -84,41 +93,28 @@ struct MeshesIndices {
   lod3: MeshesIndicesLOD,
 }
 
-fn entity_world_matrix(entity: EntityWorld) -> mat4x4f {
-  return transform_matrix(
-    entity.position,
-    Quat(entity.rotation),
-    entity.scale,
+fn vec3_transform_quat(v: vec3f, q: Quat) -> vec3f {
+  // https://github.com/greggman/wgpu-matrix/blob/31963458dcafa4cf430d981afd9b31bc5eba55e3/src/vec3-impl.ts#L746
+  let w2 = q.w * 2;
+  let uvx = q.y * v.z - q.z * v.y;
+  let uvy = q.z * v.x - q.x * v.z;
+  let uvz = q.x * v.y - q.y * v.x;
+  return vec3f(
+    v.x + uvx * w2 + (q.y * uvz - q.z * uvy) * 2,
+    v.y + uvy * w2 + (q.z * uvx - q.x * uvz) * 2,
+    v.z + uvz * w2 + (q.x * uvy - q.y * uvx) * 2,
   );
 }
 
-fn transform_matrix(pos: vec3f, rotation: Quat, scale: f32) -> mat4x4f {
-  // https://github.com/greggman/wgpu-matrix/blob/31963458dcafa4cf430d981afd9b31bc5eba55e3/src/mat4-impl.ts#L193
-  let x = rotation.x;
-  let y = rotation.y;
-  let z = rotation.z;
-  let w = rotation.w;
-
-  let x2 = x + x;
-  let y2 = y + y;
-  let z2 = z + z;
-
-  let xx = x * x2;
-  let yx = y * x2;
-  let yy = y * y2;
-  let zx = z * x2;
-  let zy = z * y2;
-  let zz = z * z2;
-  let wx = w * x2;
-  let wy = w * y2;
-  let wz = w * z2;
-
-  // https://github.com/greggman/wgpu-matrix/blob/31963458dcafa4cf430d981afd9b31bc5eba55e3/src/mat4-impl.ts#L1600
-  return mat4x4f(
-    vec4f(1 - yy - zz,     yx + wz,     zx - wy, 0) * scale, // right 
-    vec4f(    yx - wz, 1 - xx - zz,     zy + wx, 0) * scale, // up
-    vec4f(    zx + wy,     zy - wx, 1 - xx - yy, 0) * scale, // forward 
-    vec4f(      pos.x,       pos.y,       pos.z, 1),
+fn quat_inverse(q: Quat) -> Quat {
+  // https://github.com/greggman/wgpu-matrix/blob/31963458dcafa4cf430d981afd9b31bc5eba55e3/src/quat-impl.ts#L339
+  let dot = q.x*q.x + q.y*q.y + q.z*q.z + q.w*q.w;
+  let inv_dot = select(0, 1.0 / dot, dot != 0);
+  return Quat(
+    -q.x * inv_dot,
+    -q.y * inv_dot,
+    -q.z * inv_dot,
+     q.w * inv_dot,
   );
 }
 
@@ -171,6 +167,86 @@ fn quat_unpack(packed: u32) -> vec4f {
   if (max_idx == 1u) { return vec4f(a, d, b, c); }
   if (max_idx == 2u) { return vec4f(a, b, d, c); }
   return vec4<f32>(a, b, c, d);
+}
+
+fn mat4_from_transform(pos: vec3f, rotation: Quat, scale: f32) -> mat4x4f {
+  // https://github.com/greggman/wgpu-matrix/blob/31963458dcafa4cf430d981afd9b31bc5eba55e3/src/mat4-impl.ts#L193
+  let x = rotation.x;
+  let y = rotation.y;
+  let z = rotation.z;
+  let w = rotation.w;
+
+  let x2 = x + x;
+  let y2 = y + y;
+  let z2 = z + z;
+
+  let xx = x * x2;
+  let yx = y * x2;
+  let yy = y * y2;
+  let zx = z * x2;
+  let zy = z * y2;
+  let zz = z * z2;
+  let wx = w * x2;
+  let wy = w * y2;
+  let wz = w * z2;
+
+  // https://github.com/greggman/wgpu-matrix/blob/31963458dcafa4cf430d981afd9b31bc5eba55e3/src/mat4-impl.ts#L1600
+  return mat4x4f(
+    vec4f(1 - yy - zz,     yx + wz,     zx - wy, 0) * scale, // right 
+    vec4f(    yx - wz, 1 - xx - zz,     zy + wx, 0) * scale, // up
+    vec4f(    zx + wy,     zy - wx, 1 - xx - yy, 0) * scale, // forward 
+    vec4f(      pos.x,       pos.y,       pos.z, 1),         // position
+  );
+}
+
+fn mat4_from_quat(q: Quat) -> mat4x4f {
+  // https://github.com/greggman/wgpu-matrix/blob/31963458dcafa4cf430d981afd9b31bc5eba55e3/src/mat4-impl.ts#L193
+  let x2 = q.x + q.x;
+  let y2 = q.y + q.y;
+  let z2 = q.z + q.z;
+  let w2 = q.w + q.w;
+
+  let xx = q.x * x2;
+  let yx = q.y * x2;
+  let yy = q.y * y2;
+  let zx = q.z * x2;
+  let zy = q.z * y2;
+  let zz = q.z * z2;
+  let wx = q.w * x2;
+  let wy = q.w * y2;
+  let wz = q.w * z2;
+
+  return mat4x4f(
+    vec4f(1 - yy - zz,     yx + wz,     zx - wy, 0), // right
+    vec4f(    yx - wz, 1 - xx - zz,     zy + wx, 0), // up
+    vec4f(    zx + wy,     zy - wx, 1 - xx - yy, 0), // forward
+    vec4f(          0,           0,           0, 1), // position
+  );
+}
+
+fn mat4_translate(m: mat4x4f, v: vec3f) -> mat4x4f {
+  // https://github.com/greggman/wgpu-matrix/blob/31963458dcafa4cf430d981afd9b31bc5eba55e3/src/mat4-impl.ts#L1131
+  return mat4x4f(
+    m[0],
+    m[1],
+    m[2],
+    vec4f(
+      m[0][0] * v.x + m[1][0] * v.y + m[2][0] * v.z + m[3][0],
+      m[0][1] * v.x + m[1][1] * v.y + m[2][1] * v.z + m[3][1],
+      m[0][2] * v.x + m[1][2] * v.y + m[2][2] * v.z + m[3][2],
+      m[0][3] * v.x + m[1][3] * v.y + m[2][3] * v.z + m[3][3],
+    ),
+  );
+}
+
+fn mat4_transpose(m: mat4x4f) -> mat4x4f {
+  // https://github.com/greggman/wgpu-matrix/blob/31963458dcafa4cf430d981afd9b31bc5eba55e3/src/mat4-impl.ts#L379
+  return mat4x4f(
+    vec4f(m[0][0], m[1][0], m[2][0], m[3][0]),
+    vec4f(m[0][1], m[1][1], m[2][1], m[3][1]),
+    vec4f(m[0][2], m[1][2], m[2][2], m[3][2]),
+    vec4f(m[0][3], m[1][3], m[2][3], m[3][3]),
+  );
 }
 
 `;

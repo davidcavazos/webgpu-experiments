@@ -177,19 +177,16 @@ export class Meshes {
   }
 
   add(name: MeshName, mesh: Mesh): MeshRef {
-    let ref = this.entries.get(name);
-    if (ref === undefined) {
-      ref = {
-        id: this.base_vertex.allocate(),
-        name,
-        geometry: undefined,
-        bounds: {
-          min: vec3.copy(mesh.bounds.min),
-          max: vec3.copy(mesh.bounds.max),
-          scale: getBoundsScale(mesh.bounds.min, mesh.bounds.max),
-        },
-      };
-    }
+    const ref: MeshRef = {
+      id: this.entries.get(name)?.id ?? this.base_vertex.allocate(),
+      name,
+      geometry: undefined,
+      bounds: {
+        min: vec3.copy(mesh.bounds.min),
+        max: vec3.copy(mesh.bounds.max),
+        scale: getBoundsScale(mesh.bounds.min, mesh.bounds.max),
+      },
+    };
     this.entries.set(name, ref);
     this.loaders.set(name, mesh.loader);
     return ref;

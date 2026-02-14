@@ -54,17 +54,22 @@ export class Cameras {
     return this.entries.get(name);
   }
 
+  add(name: EntityName): CameraRef {
+    const ref: CameraRef = {
+      id: this.pool.allocate(),
+      entity: name,
+      projection: mat4.identity(),
+    };
+    this.entries.set(name, ref);
+    return ref;
+  }
+
   set(name: EntityName, camera: Camera): CameraRef {
-    let ref = this.entries.get(name);
-    if (ref === undefined) {
-      ref = {
-        id: this.pool.allocate(),
-        entity: name,
-        projection: mat4.copy(camera.projection),
-      };
-    } else {
-      ref.projection = mat4.copy(camera.projection);
-    }
+    const ref: CameraRef = {
+      id: this.entries.get(name)?.id ?? this.pool.allocate(),
+      entity: name,
+      projection: mat4.copy(camera.projection),
+    };
     this.entries.set(name, ref);
     this.writeCamera(ref);
     return ref;

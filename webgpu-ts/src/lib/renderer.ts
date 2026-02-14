@@ -3,6 +3,7 @@ import { Flatten } from "./passes/flatten";
 import type { Stage } from "./stage";
 import type { State } from "./start";
 import { RenderColor, type DrawCmd } from "./renderColor";
+import { SelectViews } from "./passes/selectViews";
 
 export class Renderer {
   device: GPUDevice;
@@ -12,6 +13,7 @@ export class Renderer {
   stage: Stage;
   pass: {
     flatten: Flatten;
+    selectViews: SelectViews;
     opaque: RenderColor;
   };
 
@@ -41,13 +43,21 @@ export class Renderer {
         entities_world_A: this.stage.entities.world_A,
         entities_world_B: this.stage.entities.world_B,
       }),
+      selectViews: new SelectViews(this.device, {
+        globals: this.stage.globals,
+        entities_world_A: this.stage.entities.world_A,
+        entities_world_B: this.stage.entities.world_B,
+        entities_view: this.stage.entities.view,
+        cameras: this.stage.entities.cameras.pool.buffer,
+        views: this.stage.views.pool.buffer,
+      }),
       opaque: new RenderColor(this.device, {
         label: 'opaque',
         textureFormat: this.context.getCurrentTexture().format,
         vertex_buffer: this.stage.entities.meshes.geometry.buffer,
         index_buffer: this.stage.entities.meshes.geometry.buffer,
         globals: this.stage.globals,
-        views: this.stage.views.buffer,
+        views: this.stage.views.pool.buffer,
         instances: this.stage.draws.instances,
         entities_world_A: this.stage.entities.world_A,
         entities_world_B: this.stage.entities.world_B,
@@ -66,12 +76,23 @@ export class Renderer {
   }
 
   draw<a>(state: State<a>) {
-    this.stage.writeGlobals();
+    this.stage.writeGlobals({
+      screen_width: this.canvas.width,
+      screen_height: this.canvas.height,
+    });
     const encoder = this.device.createCommandEncoder();
-    this.pass.flatten.dispatch(encoder, this.stage.entities.size(), state.current);
+    this.pass.flatten.dispatch(encoder, {
+      entities_size: this.stage.entities.size(),
+      current: state.current,
+    });
 
     // TODO: this should all be done in compute passes.
     const draws = this.TODO();
+
+    this.pass.selectViews.dispatch(encoder, {
+      views_size: this.stage.views.pool.size,
+      current: state.current,
+    });
 
     this.pass.opaque.draw(encoder, {
       renderTexture: this.context.getCurrentTexture().createView(),
@@ -83,20 +104,6 @@ export class Renderer {
   }
 
   TODO(): DrawCmd[] {
-    for (const [camera, viewport] of this.stage.viewports) {
-      // TODO: multiply projection by view matrix.
-      // - The transform is on the GPU only, so must be done in shader pass.
-      const position = [-7104.193, 2070.043, 2618.442];
-      const rotation = [0.4829551183136082, 0.005567826827333644, 0.010094142023693057, 0.8755692213013953];
-      const view = mat4.identity();
-      mat4.translate(view, position, view);
-      mat4.mul(view, mat4.fromQuat(rotation), view);
-      mat4.invert(view, view);
-      this.stage.views.set(camera.entity, {
-        view_projection: mat4.mul(camera.projection, view),
-        pinned: true,
-      });
-    }
     const instances = new Uint32Array(this.stage.entities.entries.values().map(ref => ref.id));
     this.device.queue.writeBuffer(this.stage.draws.instances, 0, instances);
     const draws: DrawCmd[] = [];

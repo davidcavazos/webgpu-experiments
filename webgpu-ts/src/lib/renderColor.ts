@@ -179,7 +179,11 @@ struct VertexOutput {
 ) -> VertexOutput {
   let entity_id = instances[instance_id];
   let entity_world = entities_world[entity_id];
-  let world_matrix = entity_world_matrix(entity_world);
+  let world_matrix = mat4_from_transform(
+    entity_world.position,
+    Quat(entity_world.rotation),
+    entity_world.scale,
+  );
   let view_projection = views[0].view_projection;
   var output: VertexOutput;
   output.position = view_projection * world_matrix * vec4f(input.position, 1.0);
