@@ -123,7 +123,7 @@ export class Renderer {
   resize(size: { width: number, height: number; }) {
     this.canvas.width = size.width;
     this.canvas.height = size.height;
-    this.stage.resizeViewports(this.canvas.width, this.canvas.height);
+    this.stage.resizeViewports(size.width, size.height);
     this.depthTexture.destroy();
     this.depthTexture = this.createDepthTexture();
   }

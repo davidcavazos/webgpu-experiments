@@ -106,7 +106,7 @@ export class RenderColor {
         depthWriteEnabled: true,
         depthCompare: 'greater', // reverse z-buffer
         format: 'depth32float',
-      }
+      },
     });
   }
 

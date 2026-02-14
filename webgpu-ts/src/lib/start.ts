@@ -22,10 +22,8 @@ export interface State<a> {
 export async function start<a>(args: {
   canvas: HTMLCanvasElement;
   init: (device: GPUDevice) => Promise<InitState<a>>;
-  resize?: (state: State<a>, width: number, height: number) => void;
   update?: (state: State<a>) => State<a>;
 }) {
-  const resize = args.resize ?? (() => { });
   const update = args.update ?? (s => s);
 
   // Get the GPU device
@@ -100,12 +98,6 @@ export async function start<a>(args: {
         width: Math.max(1, Math.min(width, maxTextureDimension2D)),
         height: renderer.canvas.height = Math.max(1, Math.min(height, maxTextureDimension2D)),
       });
-      resize(state, renderer.canvas.width, renderer.canvas.height);
-      // renderer.depthTexture.destroy();
-      // renderer.depthTexture = renderer.createDepthTexture(
-      //   args.canvas.width,
-      //   args.canvas.height,
-      // );
       requestAnimationFrame(render);
     }
   });

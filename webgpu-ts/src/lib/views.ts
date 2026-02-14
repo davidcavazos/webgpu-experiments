@@ -27,10 +27,17 @@ export class Views {
   static readonly MAX_CAPACITY = UINT8_MAX;
   static readonly ENTITY_ID = { size: 4 }; // u32
   static readonly VIEW = {
-    size: 128,
+    size: 256,
     view: (data: ArrayBuffer) => ({
-      view_projection: new Float32Array(data, 0, 16),
-      inverse_view_projection: new Float32Array(data, 64, 16),
+      entity_id: new Uint32Array(data, 0, 1),
+      _pack_lod_flags: new Uint32Array(data, 4, 1),
+      direction: new Uint16Array(data, 8, 3),
+      shadow_bias: new Uint16Array(data, 14, 1),
+      world_position: new Float32Array(data, 16, 3),
+      size_culling_k: new Float32Array(data, 28, 1),
+      frustum: new Float32Array(data, 32, 24),
+      view_projection: new Float32Array(data, 128, 16),
+      inverse_view_projection: new Float32Array(data, 192, 16),
     }),
   };
 
