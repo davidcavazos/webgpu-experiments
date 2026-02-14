@@ -112,6 +112,7 @@ ${shaderCommon}
   let rotation = Quat(entity_world.rotation);
 
   let view_matrix = mat4_translate(mat4_from_quat(quat_inverse(rotation)), -position);
+  let view_projection = camera.projection * view_matrix;
   let fov_rad = 2 * atan(1 / camera.projection[0][1]);
   let lod = 0u;
   let flags = view._pack_lod_flags & 0xFFFF;
@@ -126,9 +127,8 @@ ${shaderCommon}
   views[view_id].frustum[3] = get_frustum_top(camera.projection);
   views[view_id].frustum[4] = get_frustum_near(camera.projection);
   views[view_id].frustum[5] = get_frustum_far(camera.projection);
-  views[view_id].view_projection = camera.projection * view_matrix;
-//   views[view_id].view_projection = mat4x4f();
-//   inverse_view_projection: mat4x4f,
+  views[view_id].view_projection = view_projection;
+  views[view_id].inverse_view_projection = mat4_inverse(view_projection);
 }
 
 fn get_direction_vec(quat: Quat) -> vec3f {
